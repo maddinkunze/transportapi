@@ -7,7 +7,8 @@ import com.maddin.transportapi.Station
 import com.maddin.transportapi.StationAPI
 import com.maddin.transportapi.Vehicle
 
-class ExampleAPI : StationAPI, RealtimeAPI {
+class ExampleAPI(private var connectionsPerStation: Int) : StationAPI, RealtimeAPI {
+    constructor() : this(20)
     private val stationNames = arrayOf(
         "Student Station",
         "Climate Station",
@@ -80,39 +81,44 @@ class ExampleAPI : StationAPI, RealtimeAPI {
         "785",
         "82B"
     )
-    private var lastRealtimeStationId = ""
-    private var lastRealtimeConnections: RealtimeInfo? = null
+    private val cachedConnections = mutableMapOf<String, RealtimeInfo>()
 
     @Suppress("NewApi")
     override fun getRealtimeInformation(station: Station): RealtimeInfo {
         val curStationId = station.id
-        if ((curStationId != lastRealtimeStationId) || (lastRealtimeConnections == null)) {
-            lastRealtimeStationId = curStationId
-
-            val connections = mutableListOf<RealtimeConnection>()
-            var departsIn = 0L
-            for (i in 0..20) {
-                departsIn += (10 + Math.random() * 100).toLong()
-                val vIndex = (Math.random() * vehicleNames.size).toInt().coerceAtMost(vehicleNames.size-1)
-                val dIndex = (Math.random() * stationNames.size).toInt().coerceAtMost(stationNames.size-1)
-                val vName = vehicleNames[vIndex]
-                val dName = stationNames[dIndex]
-                val vehicle = Vehicle(vName, vName, dName)
-                val connection = RealtimeConnection(station, departsIn, vehicle)
-                connections.add(connection)
-            }
-
-            lastRealtimeConnections = RealtimeInfo(station, connections)
-            return lastRealtimeConnections!!
+        if (!cachedConnections.contains(curStationId)) {
+            cachedConnections[curStationId] = RealtimeInfo(station, mutableListOf())
         }
 
-        val connections = lastRealtimeConnections!!.connections as MutableList
+        val connections = cachedConnections[curStationId]?.connections as MutableList? ?: mutableListOf()
         for (connection in connections) {
             if (connection.departsIn() > -30) { continue }
             connections.remove(connection)
         }
 
-        return lastRealtimeConnections!!
+        var departsIn = connections.lastOrNull()?.departsIn() ?: 0L
+        for (i in connections.size..connectionsPerStation) {
+            departsIn += (10 + Math.random() * 100).toLong()
+            val vIndex = (Math.random() * vehicleNames.size).toInt().coerceAtMost(vehicleNames.size-1)
+            val dIndex = (Math.random() * stationNames.size).toInt().coerceAtMost(stationNames.size-1)
+            val vName = vehicleNames[vIndex]
+            val dName = stationNames[dIndex]
+            val vehicle = Vehicle(vName, vName, dName)
+            val connection = RealtimeConnection(station, departsIn, vehicle)
+            connections.add(connection)
+        }
+
+        return getRealtimeInfoCopy(curStationId)
+    }
+
+    @Suppress("NewApi")
+    private fun getRealtimeInfoCopy(stationId: String): RealtimeInfo {
+        val connections = mutableListOf<RealtimeConnection>()
+        val cachedInfo = cachedConnections[stationId] ?: return RealtimeInfo(Station("", ""), emptyList())
+        for (connection in cachedInfo.connections) {
+            connections.add(connection)
+        }
+        return RealtimeInfo(cachedInfo.station, connections)
     }
 
     override fun getStations(search: String): List<Station> {
