@@ -17,7 +17,7 @@ import java.util.Calendar
 
 @Suppress("unused")
 class VMS(private val limitArea: String) : StationAPI, RealtimeAPI {
-    private val limitAreaRegex = if (limitArea.isEmpty()) { null } else {Regex("(?:([\\s0-9a-zA-Z]*)\\s)?\\($limitArea\\)(, )(.*)") }
+    private val limitAreaRegex = if (limitArea.isEmpty()) { null } else {Regex("(?:([\\s0-9a-zA-Z\\u00F0-\\u02AF]*)\\s)?\\($limitArea\\)(, )(.*)") }
 
     constructor() : this("")
     override fun getStations(search: String): List<Station> {
@@ -41,14 +41,19 @@ class VMS(private val limitArea: String) : StationAPI, RealtimeAPI {
             stationsArray = JSONArray().put(onlyStation)
         }
 
+        println("MADDIN101: Station list")
+
         for (index in 0 until stationsArray.length()) {
             val station = stationsArray.optJSONObject(index) ?: continue
             if (station.optString("anyType") != "stop") { continue }
             if (limitArea.isNotEmpty() && station.optString("mainLoc", "") != limitArea) { continue }
             val stationName = cleanStationName(station.getString("name"))
+            println("MADDIN101: ${station.getString("name")} -> $stationName")
             val stationId = station.getString("stateless")
             stations.add(Station(stationId, stationName))
         }
+
+        println("MADDIN101: \nMADDIN101: ")
         return stations
     }
 
