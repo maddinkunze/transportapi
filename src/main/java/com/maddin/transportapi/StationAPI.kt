@@ -1,5 +1,9 @@
 package com.maddin.transportapi
 
 interface StationAPI {
-    fun getStations(search: String) : List<Station>
+    val sessionCache: List<String>?
+    fun getStationsAPI(search: String) : List<Station>
+    fun getStations(search: String) : List<Station> {
+        return getStationsAPI(search)
+    }
 }

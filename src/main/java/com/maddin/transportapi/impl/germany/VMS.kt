@@ -20,7 +20,8 @@ class VMS(private val limitArea: String) : StationAPI, RealtimeAPI {
     private val limitAreaRegex = if (limitArea.isEmpty()) { null } else {Regex("(?:([\\s0-9a-zA-Z\\u00F0-\\u02AF]*)\\s)?\\($limitArea\\)(, )(.*)") }
 
     constructor() : this("")
-    override fun getStations(search: String): List<Station> {
+
+    override fun getStationsAPI(search: String): List<Station> {
         val prefix = if (limitArea.isEmpty()) "" else "$limitArea, "
         val requestUrl = "https://efa.vvo-online.de/VMSSL3/XSLT_STOPFINDER_REQUEST?outputFormat=JSON&type_sf=any&name_sf=${URLEncoder.encode(prefix+search, "UTF-8")}"
         // TODO: throw InvalidResponseException when the URL fails to load and throw InvalidResponseFormatException when the JSONObject loader fails
