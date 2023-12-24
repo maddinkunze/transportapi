@@ -1,11 +1,12 @@
 package com.maddin.transportapi.impl.germany
 
+import com.maddin.transportapi.DefaultStationCache
 import com.maddin.transportapi.InvalidResponseContentException
 import com.maddin.transportapi.RealtimeAPI
 import com.maddin.transportapi.RealtimeConnection
 import com.maddin.transportapi.RealtimeInfo
 import com.maddin.transportapi.Station
-import com.maddin.transportapi.StationAPI
+import com.maddin.transportapi.CachedStationAPI
 import com.maddin.transportapi.Vehicle
 import org.json.JSONArray
 import java.net.URL
@@ -16,10 +17,12 @@ import java.time.LocalDateTime
 import java.util.Calendar
 
 @Suppress("unused")
-class VMS(private val limitArea: String) : StationAPI, RealtimeAPI {
+class VMS(private val limitArea: String) : CachedStationAPI, RealtimeAPI {
     private val limitAreaRegex = if (limitArea.isEmpty()) { null } else {Regex("(?:([\\s0-9a-zA-Z\\u00F0-\\u02AF]*)\\s)?\\($limitArea\\)(, )(.*)") }
 
     constructor() : this("")
+
+    override val stationCache = DefaultStationCache()
 
     override fun getStationsAPI(search: String): List<Station> {
         val prefix = if (limitArea.isEmpty()) "" else "$limitArea, "
@@ -42,19 +45,15 @@ class VMS(private val limitArea: String) : StationAPI, RealtimeAPI {
             stationsArray = JSONArray().put(onlyStation)
         }
 
-        println("MADDIN101: Station list")
-
         for (index in 0 until stationsArray.length()) {
             val station = stationsArray.optJSONObject(index) ?: continue
             if (station.optString("anyType") != "stop") { continue }
             if (limitArea.isNotEmpty() && station.optString("mainLoc", "") != limitArea) { continue }
             val stationName = cleanStationName(station.getString("name"))
-            println("MADDIN101: ${station.getString("name")} -> $stationName")
             val stationId = station.getString("stateless")
             stations.add(Station(stationId, stationName))
         }
 
-        println("MADDIN101: \nMADDIN101: ")
         return stations
     }
 
