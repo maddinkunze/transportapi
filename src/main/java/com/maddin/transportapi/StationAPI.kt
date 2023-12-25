@@ -19,8 +19,8 @@ interface StationCache {
 }
 
 @Suppress("NewApi")
-data class CachedStation(val station: Station, var updated: LocalDateTime) {
-    constructor(station: Station) : this(station, LocalDateTime.now())
+data class CachedItem<T>(val station: T, var updated: LocalDateTime) {
+    constructor(station: T) : this(station, LocalDateTime.now())
     fun update() {
         updated = LocalDateTime.now()
     }
@@ -34,7 +34,7 @@ open class DefaultStationCache(private val expiresAfter: Duration) : StationCach
     @Suppress("NewApi")
     constructor() : this(Duration.ofDays(7))
     private val sessionCache = mutableMapOf<String, List<Station>>()
-    private val stationCache = mutableListOf<CachedStation>()
+    private val stationCache = mutableListOf<CachedItem<SearchableStation>>()
     override fun addSearch(search: String, results: List<Station>) {
         sessionCache[search] = results
 
@@ -42,8 +42,8 @@ open class DefaultStationCache(private val expiresAfter: Duration) : StationCach
             val existing = stationCache.find { it.station.id == item.id }
             if (existing != null) {
                 existing.update()
-            } else {
-                stationCache.add(CachedStation(item))
+            } else if (item is SearchableStation) {
+                stationCache.add(CachedItem(item))
             }
         }
     }
@@ -52,11 +52,8 @@ open class DefaultStationCache(private val expiresAfter: Duration) : StationCach
         return sessionCache[search]
     }
 
-    private fun stationMatchesSearch(station: Station, search: String) : Boolean {
-        return station.name.contains(search, ignoreCase=true)
-    }
-    private fun stationMatchesSearchAndIsNotTooOld(station: CachedStation, search: String) : Boolean {
-        return station.isValid(expiresAfter) && stationMatchesSearch(station.station, search)
+    private fun stationMatchesSearchAndIsNotTooOld(station: CachedItem<SearchableStation>, search: String) : Boolean {
+        return station.isValid(expiresAfter) && station.station.matches(search)
     }
 
     override fun searchStations(search: String): List<Station> {
@@ -65,19 +62,19 @@ open class DefaultStationCache(private val expiresAfter: Duration) : StationCach
 }
 
 interface StationAPI {
-    fun getStations(search: String) : List<Station>
+    fun searchStations(search: String) : List<Station>
 }
 
 interface CachedStationAPI : StationAPI {
     val stationCache: StationCache?
-    fun getStationsAPI(search: String) : List<Station>
-    override fun getStations(search: String) : List<Station> {
+    fun searchStationsAPI(search: String) : List<Station>
+    override fun searchStations(search: String) : List<Station> {
         // if we have a session cache and we already searched for this specific station, use it
         var stations: List<Station>? = stationCache?.getSearch(search)
 
         // if we did not find some stations until here, call the api (might be expensive)
         if (stations == null) {
-            stations = getStationsAPI(search)
+            stations = searchStationsAPI(search)
             stationCache?.addSearch(search, stations)
         }
 
