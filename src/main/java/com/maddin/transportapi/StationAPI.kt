@@ -86,3 +86,108 @@ interface CachedStationAPI : StationAPI {
         return stations
     }
 }
+
+interface LocationArea {
+
+    fun toPolygon() : LocationAreaPolygon {
+        return toPolygon(0.01)
+    }
+
+    fun toPolygon(precision: Double) : LocationAreaPolygon
+
+    fun toCircle() {
+        return toCircle(1.0)
+    }
+
+    fun toCircle(contains: Double) {
+
+    }
+
+    private fun toOuterCircle() {
+
+    }
+
+    private fun toInnerCircle() {
+
+    }
+
+    fun toRect() : LocationAreaRect {
+        return toOuterRect()
+    }
+
+    fun toRect(contains: Double) : LocationAreaRect {
+        val outerRect = toOuterRect()
+        val innerRect = toInnerRect()
+
+        val center = interpolate(outerRect.center, innerRect.center, contains)
+        val width = interpolate(outerRect.width, innerRect.width, contains)
+        val height = interpolate(outerRect.height, innerRect.height, contains)
+        return LocationAreaRect(center, width, height)
+    }
+
+    private fun toOuterRect() : LocationAreaRect {
+        val points = toPolygon().points
+        var minX = Double.POSITIVE_INFINITY
+        var minY = Double.POSITIVE_INFINITY
+        var maxX = Double.NEGATIVE_INFINITY
+        var maxY = Double.NEGATIVE_INFINITY
+        for (point in points) {
+            if (point.lat < minX) { minX = point.lat }
+            if (point.lat > maxX) { maxX = point.lat }
+            if (point.lon < minY) { minY = point.lon }
+            if (point.lon > maxY) { maxY = point.lon }
+        }
+
+        val width = maxX - minX
+        val height = maxY - minY
+        val center = DefaultCoordinate(minX + height/2, minY + width/2)
+        return LocationAreaRect(center, width, height)
+    }
+
+    private fun toInnerRect() : LocationAreaRect {
+        return toOuterRect()
+    }
+
+    private fun interpolate(a: Coordinate, b: Coordinate, f: Double) : Coordinate {
+        return DefaultCoordinate(interpolate(a.lat, b.lon, f), interpolate(a.lat, b.lon, f))
+    }
+
+    private fun interpolate(a: Double, b: Double, f: Double) : Double {
+        return a * (f-1) + b * f
+    }
+}
+
+
+open class LocationAreaRect(val center: Coordinate, val width: Double, val height: Double) : LocationArea {
+    val topLeft = DefaultCoordinate(center.lat-height/2, center.lon-width/2)
+    val topRight = DefaultCoordinate(center.lat+height/2, center.lon-width/2)
+    val bottomLeft = DefaultCoordinate(center.lat-height/2, center.lon+width/2)
+    val bottomRight = DefaultCoordinate(center.lat+height/2, center.lon+width/2)
+    override fun toPolygon(precision: Double): LocationAreaPolygon {
+        return LocationAreaPolygon(listOf(topLeft, topRight, bottomRight, bottomLeft))
+    }
+
+    override fun toRect(contains: Double): LocationAreaRect {
+        return this
+    }
+}
+
+open class LocationAreaSquare(center: Coordinate, val size: Double) : LocationAreaRect(center, size, size) {
+
+}
+
+open class LocationAreaEllipse(val center: Coordinate, val r1: Double, val r2: Double) {
+
+}
+
+open class LocationAreaCircle(center: Coordinate, val radius: Double) : LocationAreaEllipse(center, radius, radius)
+
+open class LocationAreaPolygon(val points: List<Coordinate>) : LocationArea {
+    override fun toPolygon(precision: Double) : LocationAreaPolygon {
+        return this
+    }
+}
+
+interface LocationStationAPI {
+    fun locateStations(location: LocationArea) : List<Station>
+}

@@ -6,30 +6,32 @@ import com.maddin.transportapi.RealtimeConnection
 import com.maddin.transportapi.RealtimeInfo
 import com.maddin.transportapi.Station
 import com.maddin.transportapi.CachedStationAPI
-import com.maddin.transportapi.DefaultLocationLongLat
+import com.maddin.transportapi.Coordinate
+import com.maddin.transportapi.DefaultLocationLatLon
 import com.maddin.transportapi.DefaultStation
 import com.maddin.transportapi.Direction
 import com.maddin.transportapi.FutureRealtimeAPI
 import com.maddin.transportapi.Line
+import com.maddin.transportapi.LocationArea
+import com.maddin.transportapi.LocationStationAPI
 import com.maddin.transportapi.RealtimeStop
 import com.maddin.transportapi.Vehicle
 import org.json.JSONArray
 import java.net.URL
 import java.net.URLEncoder
 import org.json.JSONObject
-import java.text.SimpleDateFormat
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.Calendar
 import java.util.Locale
 
 @Suppress("NewApi")
-val FORMATTER_DATE = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+val FORMATTER_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
 @Suppress("NewApi")
-val FORMATTER_TIME = DateTimeFormatter.ofPattern("HH:mm")
+val FORMATTER_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+const val FORMAT_COORDS = "WGS84[DD.DDDDD]"
 
 @Suppress("unused")
-class VMS(private val limitArea: String) : CachedStationAPI, FutureRealtimeAPI {
+class VMS(private val limitArea: String) : CachedStationAPI, LocationStationAPI, FutureRealtimeAPI {
     private val limitAreaRegex = if (limitArea.isEmpty()) { null } else {Regex("(?:([\\s0-9a-zA-Z\\u00F0-\\u02AF]*)\\s)?\\($limitArea\\)(, )(.*)") }
 
     constructor() : this("")
@@ -38,37 +40,25 @@ class VMS(private val limitArea: String) : CachedStationAPI, FutureRealtimeAPI {
 
     override fun searchStationsAPI(search: String): List<Station> {
         val prefix = if (limitArea.isEmpty()) "" else "$limitArea, "
-        val requestUrl = "https://efa.vvo-online.de/VMSSL3/XSLT_STOPFINDER_REQUEST?coordOutputFormat=WGS84[dd.ddddd]&outputFormat=JSON&type_sf=any&name_sf=${URLEncoder.encode(prefix+search, "UTF-8")}"
+        val requestUrl = "https://efa.vvo-online.de/VMSSL3/XSLT_STOPFINDER_REQUEST?coordOutputFormat=${URLEncoder.encode(FORMAT_COORDS, "UTF-8")}&outputFormat=JSON&type_sf=any&name_sf=${URLEncoder.encode(prefix+search, "UTF-8")}"
         // TODO: throw InvalidResponseException when the URL fails to load and throw InvalidResponseFormatException when the JSONObject loader fails
         var stationsRaw = JSONObject(URL(requestUrl).readText())
-        val stations = mutableListOf<Station>()
         if (!stationsRaw.has("stopFinder")) {
-            throw InvalidResponseContentException("VMS.getStations() response had no attribute \"stopFinder\" after requesting $requestUrl")
+            throw InvalidResponseContentException("${javaClass.name}.searchStationsAPI() response had no attribute \"stopFinder\" after requesting $requestUrl")
         }
         stationsRaw = stationsRaw.getJSONObject("stopFinder")
         if (!stationsRaw.has("points")) {
-            throw InvalidResponseContentException("VMS.getStations() response had no attribute \"stopFinder\".\"points\" after requesting $requestUrl")
+            throw InvalidResponseContentException("${javaClass.name}.searchStationsAPI() response had no attribute \"stopFinder\".\"points\" after requesting $requestUrl")
         }
 
         var stationsArray = stationsRaw.optJSONArray("points")
         if (stationsArray == null) {
-            stationsRaw = stationsRaw.optJSONObject("points") ?: throw InvalidResponseContentException("VMS.getStations() response contains \"stopFinder\".\"points\" which is neither JSONArray nor JSONObject after requesting $requestUrl")
-            val onlyStation = stationsRaw.optJSONObject("point") ?: throw InvalidResponseContentException("VMS.getStations() response contains \"stopFinder\".\"points\" which is JSONObject but does not contain \"point\" after requesting $requestUrl")
+            stationsRaw = stationsRaw.optJSONObject("points") ?: throw InvalidResponseContentException("${javaClass.name}.searchStationsAPI() response contains \"stopFinder\".\"points\" which is neither JSONArray nor JSONObject after requesting $requestUrl")
+            val onlyStation = stationsRaw.optJSONObject("point") ?: throw InvalidResponseContentException("${javaClass.name}.searchStationsAPI() response contains \"stopFinder\".\"points\" which is JSONObject but does not contain \"point\" after requesting $requestUrl")
             stationsArray = JSONArray().put(onlyStation)
         }
 
-        for (index in 0 until stationsArray.length()) {
-            val station = stationsArray.optJSONObject(index) ?: continue
-            if (station.optString("anyType") != "stop") { continue }
-            if (limitArea.isNotEmpty() && station.optString("mainLoc", "") != limitArea) { continue }
-            val stationName = cleanStationName(station.getString("name"))
-            val stationId = station.getString("stateless")
-            val stationCoords = station.getJSONObject("ref").getString("coords").split(",").map { it.toDouble() }
-            val stationLoc = DefaultLocationLongLat(stationCoords[1], stationCoords[0])
-            stations.add(DefaultStation(stationId, stationName, stationLoc))
-        }
-
-        return stations
+        return extractStations(stationsArray)
     }
 
     private fun cleanStationName(stationName: String) : String {
@@ -147,5 +137,51 @@ class VMS(private val limitArea: String) : CachedStationAPI, FutureRealtimeAPI {
         val departsHour = time.getInt("hour")
         val departsMinute = time.getInt("minute")
         return LocalDateTime.of(departsYear, departsMonth, departsDay, departsHour, departsMinute)
+    }
+
+    private fun makeCoordinate(coords: Coordinate) : String {
+        return "%.6f:%.6f:$FORMAT_COORDS".format(Locale.ROOT, coords.lon, coords.lat)
+    }
+
+    override fun locateStations(location: LocationArea) : List<Station> {
+        val area = location.toRect()
+        val topLeft = URLEncoder.encode(makeCoordinate(area.topLeft), "UTF-8")
+        val botRight = URLEncoder.encode(makeCoordinate(area.bottomRight), "UTF-8")
+        val requestURL = "https://efa.vvo-online.de/VMSSL3/XSLT_COORD_REQUEST?boundingBox=&boundingBoxLU=${topLeft}&boundingBoxRL=${botRight}&coordOutputFormat=${URLEncoder.encode(FORMAT_COORDS, "UTF-8")}&type_1=STOP&outputFormat=json&inclFilter=1"
+        val stationsRaw = JSONObject(URL(requestURL).readText())
+        return extractStations(stationsRaw.getJSONArray("pins"))
+    }
+
+    private fun isStationStop(station: JSONObject) : Boolean {
+        return station.optString("anyType") == "stop" || station.optString("type") == "STOP"
+    }
+
+    private fun isStationInArea(station: JSONObject) : Boolean {
+        return limitArea.isEmpty() || station.optString("mainLoc", "") == limitArea || station.optString("locality") == limitArea
+    }
+    private fun extractStations(stationsArray: JSONArray) : List<Station> {
+        val stations = mutableListOf<Station>()
+
+        for (index in 0 until stationsArray.length()) {
+            val station = stationsArray.optJSONObject(index) ?: continue
+            if (!isStationStop(station)) { continue }
+            if (!isStationInArea(station)) { continue }
+
+            var stationName = ""
+            if (station.has("name")) { stationName = cleanStationName(station.getString("name")) }
+            else if (station.has("desc")) { stationName = station.getString("desc") }
+
+            val stationId = station.getString("stateless")
+
+            var stationCoordsString = "0,0"
+            if (station.has("coords")) { stationCoordsString = station.getString("coords") }
+            else if (station.has("ref")) { stationCoordsString = station.getJSONObject("ref").getString("coords") }
+            val stationCoords = stationCoordsString.split(",").map { it.toDouble() }
+            val stationLoc = DefaultLocationLatLon(stationCoords[1], stationCoords[0])
+
+            stations.add(DefaultStation(stationId, stationName, stationLoc))
+        }
+
+        return stations
     }
 }

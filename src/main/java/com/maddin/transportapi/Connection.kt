@@ -26,3 +26,13 @@ open class RealtimeStop(station: Station, arrivalPlanned: LocalDateTime, departu
 }
 
 open class Connection(val stops: List<Stop>, val vehicle: Vehicle)
+
+enum class ConnectionStatus {
+    NONE,
+    ACTIVE,
+    CANCELLED
+}
+
+interface CancellableConnection {
+    var status: ConnectionStatus
+}

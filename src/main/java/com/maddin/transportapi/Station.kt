@@ -1,18 +1,21 @@
 package com.maddin.transportapi
 
+interface Coordinate {
+    val lat: Double
+    val lon: Double
+}
+data class DefaultCoordinate(override val lat: Double, override val lon: Double) : Coordinate
+
 interface Location {
     fun describe() : String
 }
 
-interface LocationLongLat : Location {
-    val lat: Double
-    val lon: Double
-
+interface LocationLatLon : Location, Coordinate {
     override fun describe(): String {
         return "($lat, $lon)"
     }
 }
-data class DefaultLocationLongLat(override val lat: Double, override val lon: Double) : LocationLongLat
+data class DefaultLocationLatLon(override val lat: Double, override val lon: Double) : LocationLatLon
 
 interface Station {
     val id: String
@@ -27,7 +30,7 @@ interface SearchableStation : Station {
 }
 
 interface LocatableStation : Station {
-    override val location: LocationLongLat
+    override val location: LocationLatLon
 }
 
 data class MinimalStation(
@@ -35,6 +38,6 @@ data class MinimalStation(
     constructor(id: String, name: String) : this(id, name, null)
 }
 
-data class DefaultStation(override val id: String, override val name: String, override val location: LocationLongLat) : Station, SearchableStation, LocatableStation {
+data class DefaultStation(override val id: String, override val name: String, override val location: LocationLatLon) : Station, SearchableStation, LocatableStation {
 
 }
