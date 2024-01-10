@@ -34,7 +34,7 @@ open class DefaultStationCache(private val expiresAfter: Duration) : StationCach
     @Suppress("NewApi")
     constructor() : this(Duration.ofDays(7))
     private val sessionCache = mutableMapOf<String, List<Station>>()
-    private val stationCache = mutableListOf<CachedItem<SearchableStation>>()
+    private val stationCache = mutableListOf<CachedItem<Station>>()
     override fun addSearch(search: String, results: List<Station>) {
         sessionCache[search] = results
 
@@ -42,7 +42,7 @@ open class DefaultStationCache(private val expiresAfter: Duration) : StationCach
             val existing = stationCache.find { it.station.id == item.id }
             if (existing != null) {
                 existing.update()
-            } else if (item is SearchableStation) {
+            } else {
                 stationCache.add(CachedItem(item))
             }
         }
@@ -52,7 +52,7 @@ open class DefaultStationCache(private val expiresAfter: Duration) : StationCach
         return sessionCache[search]
     }
 
-    private fun stationMatchesSearchAndIsNotTooOld(station: CachedItem<SearchableStation>, search: String) : Boolean {
+    private fun stationMatchesSearchAndIsNotTooOld(station: CachedItem<Station>, search: String) : Boolean {
         return station.isValid(expiresAfter) && station.station.matches(search)
     }
 
@@ -140,7 +140,7 @@ interface LocationArea {
 
         val width = maxX - minX
         val height = maxY - minY
-        val center = DefaultCoordinate(minX + height/2, minY + width/2)
+        val center = LocationLatLon(minX + height/2, minY + width/2)
         return LocationAreaRect(center, width, height)
     }
 
@@ -148,8 +148,8 @@ interface LocationArea {
         return toOuterRect()
     }
 
-    private fun interpolate(a: Coordinate, b: Coordinate, f: Double) : Coordinate {
-        return DefaultCoordinate(interpolate(a.lat, b.lon, f), interpolate(a.lat, b.lon, f))
+    private fun interpolate(a: LocationLatLon, b: LocationLatLon, f: Double) : LocationLatLon {
+        return LocationLatLon(interpolate(a.lat, b.lon, f), interpolate(a.lat, b.lon, f))
     }
 
     private fun interpolate(a: Double, b: Double, f: Double) : Double {
@@ -158,11 +158,11 @@ interface LocationArea {
 }
 
 
-open class LocationAreaRect(val center: Coordinate, val width: Double, val height: Double) : LocationArea {
-    val topLeft = DefaultCoordinate(center.lat-height/2, center.lon-width/2)
-    val topRight = DefaultCoordinate(center.lat+height/2, center.lon-width/2)
-    val bottomLeft = DefaultCoordinate(center.lat-height/2, center.lon+width/2)
-    val bottomRight = DefaultCoordinate(center.lat+height/2, center.lon+width/2)
+open class LocationAreaRect(val center: LocationLatLon, val width: Double, val height: Double) : LocationArea {
+    val topLeft = LocationLatLon(center.lat-height/2, center.lon-width/2)
+    val topRight = LocationLatLon(center.lat+height/2, center.lon-width/2)
+    val bottomLeft = LocationLatLon(center.lat-height/2, center.lon+width/2)
+    val bottomRight = LocationLatLon(center.lat+height/2, center.lon+width/2)
     override fun toPolygon(precision: Double): LocationAreaPolygon {
         return LocationAreaPolygon(listOf(topLeft, topRight, bottomRight, bottomLeft))
     }
@@ -172,17 +172,17 @@ open class LocationAreaRect(val center: Coordinate, val width: Double, val heigh
     }
 }
 
-open class LocationAreaSquare(center: Coordinate, val size: Double) : LocationAreaRect(center, size, size) {
+open class LocationAreaSquare(center: LocationLatLon, val size: Double) : LocationAreaRect(center, size, size) {
 
 }
 
-open class LocationAreaEllipse(val center: Coordinate, val r1: Double, val r2: Double) {
+open class LocationAreaEllipse(val center: LocationLatLon, val r1: Double, val r2: Double) {
 
 }
 
-open class LocationAreaCircle(center: Coordinate, val radius: Double) : LocationAreaEllipse(center, radius, radius)
+open class LocationAreaCircle(center: LocationLatLon, val radius: Double) : LocationAreaEllipse(center, radius, radius)
 
-open class LocationAreaPolygon(val points: List<Coordinate>) : LocationArea {
+open class LocationAreaPolygon(val points: List<LocationLatLon>) : LocationArea {
     override fun toPolygon(precision: Double) : LocationAreaPolygon {
         return this
     }

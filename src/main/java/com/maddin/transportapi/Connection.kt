@@ -3,8 +3,16 @@ package com.maddin.transportapi
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
+enum class StopStatus {
+    NONE,
+    ACTIVE,
+    CANCELLED
+}
+
 @Suppress("NewApi")
-open class Stop(val station: Station, val arrivalPlanned: LocalDateTime, val departurePlanned: LocalDateTime) {
+open class Stop(val station: Station, val arrivalPlanned: LocalDateTime, val departurePlanned: LocalDateTime, val status: StopStatus) {
+    constructor(station: Station, arrivalPlanned: LocalDateTime, departurePlanned: LocalDateTime) : this(station, arrivalPlanned, departurePlanned, StopStatus.NONE)
+    constructor(station: Station, departurePlanned: LocalDateTime, status: StopStatus) : this(station, departurePlanned, departurePlanned, status)
     constructor(station: Station, departurePlanned: LocalDateTime) : this(station, departurePlanned, departurePlanned)
 
     open fun departsIn() : Long {
@@ -25,14 +33,12 @@ open class RealtimeStop(station: Station, arrivalPlanned: LocalDateTime, departu
     }
 }
 
-open class Connection(val stops: List<Stop>, val vehicle: Vehicle)
-
 enum class ConnectionStatus {
     NONE,
     ACTIVE,
     CANCELLED
 }
 
-interface CancellableConnection {
-    var status: ConnectionStatus
+open class Connection(val stops: List<Stop>, val vehicle: Vehicle, val status: ConnectionStatus) {
+    constructor(stops: List<Stop>, vehicle: Vehicle) : this(stops, vehicle, ConnectionStatus.NONE)
 }

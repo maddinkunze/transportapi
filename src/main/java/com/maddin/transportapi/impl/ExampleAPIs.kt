@@ -2,7 +2,6 @@ package com.maddin.transportapi.impl
 
 import com.maddin.transportapi.Direction
 import com.maddin.transportapi.Line
-import com.maddin.transportapi.MinimalStation
 import com.maddin.transportapi.RealtimeAPI
 import com.maddin.transportapi.RealtimeConnection
 import com.maddin.transportapi.RealtimeInfo
@@ -119,7 +118,7 @@ class ExampleAPI(private var connectionsPerStation: Int) : StationAPI, RealtimeA
     @Suppress("NewApi")
     private fun getRealtimeInfoCopy(stationId: String): RealtimeInfo {
         val connections = mutableListOf<RealtimeConnection>()
-        val cachedInfo = cachedConnections[stationId] ?: return RealtimeInfo(MinimalStation("", ""), emptyList())
+        val cachedInfo = cachedConnections[stationId] ?: return RealtimeInfo(Station("", ""), emptyList())
         for (connection in cachedInfo.connections) {
             connections.add(connection)
         }
@@ -133,7 +132,7 @@ class ExampleAPI(private var connectionsPerStation: Int) : StationAPI, RealtimeA
             if (!stationName.startsWith(search, ignoreCase = true)) {
                 continue
             }
-            stations.add(MinimalStation(stationIndex.toString(), stationName))
+            stations.add(Station(stationIndex.toString(), stationName))
         }
         return stations
     }

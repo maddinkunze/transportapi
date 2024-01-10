@@ -6,12 +6,11 @@ import com.maddin.transportapi.RealtimeConnection
 import com.maddin.transportapi.RealtimeInfo
 import com.maddin.transportapi.Station
 import com.maddin.transportapi.CachedStationAPI
-import com.maddin.transportapi.Coordinate
-import com.maddin.transportapi.DefaultLocationLatLon
-import com.maddin.transportapi.DefaultStation
+import com.maddin.transportapi.LocationLatLon
 import com.maddin.transportapi.Direction
 import com.maddin.transportapi.FutureRealtimeAPI
 import com.maddin.transportapi.Line
+import com.maddin.transportapi.LocatableStation
 import com.maddin.transportapi.LocationArea
 import com.maddin.transportapi.LocationStationAPI
 import com.maddin.transportapi.RealtimeStop
@@ -139,7 +138,7 @@ class VMS(private val limitArea: String) : CachedStationAPI, LocationStationAPI,
         return LocalDateTime.of(departsYear, departsMonth, departsDay, departsHour, departsMinute)
     }
 
-    private fun makeCoordinate(coords: Coordinate) : String {
+    private fun makeCoordinate(coords: LocationLatLon) : String {
         return "%.6f:%.6f:$FORMAT_COORDS".format(Locale.ROOT, coords.lon, coords.lat)
     }
 
@@ -157,7 +156,7 @@ class VMS(private val limitArea: String) : CachedStationAPI, LocationStationAPI,
     }
 
     private fun isStationInArea(station: JSONObject) : Boolean {
-        return limitArea.isEmpty() || station.optString("mainLoc", "") == limitArea || station.optString("locality") == limitArea
+        return limitArea.isEmpty() || station.optString("mainLoc", "") == limitArea || station.has("locality")
     }
     private fun extractStations(stationsArray: JSONArray) : List<Station> {
         val stations = mutableListOf<Station>()
@@ -177,9 +176,9 @@ class VMS(private val limitArea: String) : CachedStationAPI, LocationStationAPI,
             if (station.has("coords")) { stationCoordsString = station.getString("coords") }
             else if (station.has("ref")) { stationCoordsString = station.getJSONObject("ref").getString("coords") }
             val stationCoords = stationCoordsString.split(",").map { it.toDouble() }
-            val stationLoc = DefaultLocationLatLon(stationCoords[1], stationCoords[0])
+            val stationLoc = LocationLatLon(stationCoords[1], stationCoords[0])
 
-            stations.add(DefaultStation(stationId, stationName, stationLoc))
+            stations.add(LocatableStation(stationId, stationName, stationLoc))
         }
 
         return stations

@@ -2,7 +2,6 @@ package com.maddin.transportapi.impl.germany
 
 import com.maddin.transportapi.Direction
 import com.maddin.transportapi.Line
-import com.maddin.transportapi.MinimalStation
 import com.maddin.transportapi.RealtimeAPI
 import com.maddin.transportapi.RealtimeConnection
 import com.maddin.transportapi.RealtimeInfo
@@ -24,7 +23,7 @@ class CVAG : StationAPI, RealtimeAPI {
             val station = stations.getJSONObject(i)
             val stationId = station.getString("mandator") + "-" + station.getString("number")
             val stationName = station.getString("displayName")
-            MinimalStation(stationId, stationName)
+            Station(stationId, stationName)
         }
     }
 
