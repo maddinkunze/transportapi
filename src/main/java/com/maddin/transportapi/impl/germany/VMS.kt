@@ -5,7 +5,8 @@ import com.maddin.transportapi.InvalidResponseContentException
 import com.maddin.transportapi.RealtimeConnection
 import com.maddin.transportapi.RealtimeInfo
 import com.maddin.transportapi.Station
-import com.maddin.transportapi.CachedStationAPI
+import com.maddin.transportapi.CachedSearchStationAPI
+import com.maddin.transportapi.Connection
 import com.maddin.transportapi.LocationLatLon
 import com.maddin.transportapi.Direction
 import com.maddin.transportapi.FutureRealtimeAPI
@@ -13,7 +14,7 @@ import com.maddin.transportapi.Line
 import com.maddin.transportapi.LocatableStation
 import com.maddin.transportapi.LocationArea
 import com.maddin.transportapi.LocationStationAPI
-import com.maddin.transportapi.RealtimeStop
+import com.maddin.transportapi.Stop
 import com.maddin.transportapi.Vehicle
 import org.json.JSONArray
 import java.net.URL
@@ -29,8 +30,19 @@ val FORMATTER_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy"
 val FORMATTER_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 const val FORMAT_COORDS = "WGS84[DD.DDDDD]"
 
+@Suppress("NewApi")
+fun JSONObject.getTime(key: String): LocalDateTime {
+    val time = getJSONObject(key)
+    val departsYear = time.getInt("year")
+    val departsMonth = time.getInt("month")
+    val departsDay = time.getInt("day")
+    val departsHour = time.getInt("hour")
+    val departsMinute = time.getInt("minute")
+    return LocalDateTime.of(departsYear, departsMonth, departsDay, departsHour, departsMinute)
+}
+
 @Suppress("unused")
-class VMS(private val limitArea: String) : CachedStationAPI, LocationStationAPI, FutureRealtimeAPI {
+class VMS(private val limitArea: String) : CachedSearchStationAPI, LocationStationAPI, FutureRealtimeAPI {
     private val limitAreaRegex = if (limitArea.isEmpty()) { null } else {Regex("(?:([\\s0-9a-zA-Z\\u00F0-\\u02AF]*)\\s)?\\($limitArea\\)(, )(.*)") }
 
     constructor() : this("")
@@ -78,7 +90,7 @@ class VMS(private val limitArea: String) : CachedStationAPI, LocationStationAPI,
         val stationId = URLEncoder.encode(station.id, "UTF-8")
         val date = URLEncoder.encode(from.format(FORMATTER_DATE), "UTF-8")
         val time = URLEncoder.encode(from.format(FORMATTER_TIME), "UTF-8")
-        val requestUrl = "https://efa.vvo-online.de/VMSSL3/XSLT_DM_REQUEST?language=deincludeCompleteStopSeq=1&mode=direct&useAllStops=1&outputFormat=JSON&name_dm=${stationId}&type_dm=any&itdDateDayMonthYear=${date}&itdTime=${time}&useRealtime=1"
+        val requestUrl = "https://efa.vvo-online.de/VMSSL3/XSLT_DM_REQUEST?language=de&includeCompleteStopSeq=1&mode=direct&useAllStops=1&outputFormat=JSON&name_dm=${stationId}&type_dm=any&itdDateDayMonthYear=${date}&itdTime=${time}&useRealtime=1"
         val stopInfo = JSONObject(URL(requestUrl).readText())
 
         val areaPrefix = "$limitArea, "
@@ -108,13 +120,31 @@ class VMS(private val limitArea: String) : CachedStationAPI, LocationStationAPI,
             vDirection = vDirection.removePrefix(areaPrefix)
             val vehicle = Vehicle(null, Line(vName, vName), Direction(vDirection))
 
-            val departurePlanned = getJSONTime(stop.getJSONObject("dateTime"))
-            val departureActual = getJSONTime(stop.getJSONObject(if (stop.has("realDateTime")) "realDateTime" else "dateTime"))
+            var flagsStop = Stop.FLAG_NONE
+            var flagsConnection = Connection.FLAG_NONE
 
-            val connection = RealtimeConnection(vehicle, RealtimeStop(station, departurePlanned, departureActual))
+            val tripStatus = stop.optString("realtimeTripStatus", "").split("|")
+            @Suppress("KotlinConstantConditions")
+            if (tripStatus.contains("TRIP_CANCELLED")) {
+                // TODO: should really be in the connection flags, since the whole trip is cancelled
+                flagsStop = flagsStop or Stop.FLAG_CANCELLED
+                flagsConnection = flagsConnection or Connection.FLAG_CANCELLED
+            }
+            if (tripStatus.contains("MONITORED")) {
+                flagsStop = flagsStop or Stop.FLAG_REALTIME
+            }
+
+            val departurePlanned = stop.getTime("dateTime")
+            var departureActual = departurePlanned
+            if (stop.has("realDateTime")) {
+                departureActual = stop.getTime("realDateTime")
+                flagsStop = flagsStop or Stop.FLAG_REALTIME
+            }
+
+            val connection = RealtimeConnection(vehicle, Stop(station, departurePlanned=departurePlanned, departureActual=departureActual, flags=flagsStop))
             var index = connections.size
             while (index > 0) {
-                if ((connections[index-1].stop as RealtimeStop).departureActual <= departureActual) { break }
+                if (connections[index-1].stop.departureActual <= departureActual) { break }
                 index--
             }
             connections.add(index, connection)
@@ -126,16 +156,6 @@ class VMS(private val limitArea: String) : CachedStationAPI, LocationStationAPI,
     @Suppress("SimpleDateFormat", "NewApi")
     override fun getRealtimeInformation(station: Station): RealtimeInfo {
         return getRealtimeInformation(station, LocalDateTime.now())
-    }
-
-    @Suppress("NewApi")
-    private fun getJSONTime(time: JSONObject) : LocalDateTime {
-        val departsYear = time.getInt("year")
-        val departsMonth = time.getInt("month")
-        val departsDay = time.getInt("day")
-        val departsHour = time.getInt("hour")
-        val departsMinute = time.getInt("minute")
-        return LocalDateTime.of(departsYear, departsMonth, departsDay, departsHour, departsMinute)
     }
 
     private fun makeCoordinate(coords: LocationLatLon) : String {

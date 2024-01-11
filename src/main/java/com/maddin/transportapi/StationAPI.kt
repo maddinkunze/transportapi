@@ -3,6 +3,10 @@ package com.maddin.transportapi
 import java.time.Duration
 import java.time.LocalDateTime
 
+interface StationAPI {
+    fun getStation(id: String): Station
+}
+
 interface StationCache {
     fun addSearch(search: String, results: List<Station>)
     fun getSearch(search: String) : List<Station>?
@@ -61,11 +65,11 @@ open class DefaultStationCache(private val expiresAfter: Duration) : StationCach
     }
 }
 
-interface StationAPI {
+interface SearchStationAPI {
     fun searchStations(search: String) : List<Station>
 }
 
-interface CachedStationAPI : StationAPI {
+interface CachedSearchStationAPI : SearchStationAPI {
     val stationCache: StationCache?
     fun searchStationsAPI(search: String) : List<Station>
     override fun searchStations(search: String) : List<Station> {

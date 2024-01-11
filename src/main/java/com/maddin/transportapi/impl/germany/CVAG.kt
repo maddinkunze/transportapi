@@ -6,7 +6,7 @@ import com.maddin.transportapi.RealtimeAPI
 import com.maddin.transportapi.RealtimeConnection
 import com.maddin.transportapi.RealtimeInfo
 import com.maddin.transportapi.Station
-import com.maddin.transportapi.StationAPI
+import com.maddin.transportapi.SearchStationAPI
 import com.maddin.transportapi.Stop
 import com.maddin.transportapi.Vehicle
 import java.net.URL
@@ -16,7 +16,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 
 
-class CVAG : StationAPI, RealtimeAPI {
+class CVAG : SearchStationAPI, RealtimeAPI {
     override fun searchStations(search: String): List<Station> {
         val stations = JSONObject(URL("https://www.cvag.de/eza/mis/stations?like=${URLEncoder.encode(search, "UTF-8")}").readText()).getJSONArray("stations")
         return List(stations.length()) { i ->

@@ -6,12 +6,12 @@ import com.maddin.transportapi.RealtimeAPI
 import com.maddin.transportapi.RealtimeConnection
 import com.maddin.transportapi.RealtimeInfo
 import com.maddin.transportapi.Station
-import com.maddin.transportapi.StationAPI
+import com.maddin.transportapi.SearchStationAPI
 import com.maddin.transportapi.Stop
 import com.maddin.transportapi.Vehicle
 import java.time.LocalDateTime
 
-class ExampleAPI(private var connectionsPerStation: Int) : StationAPI, RealtimeAPI {
+class ExampleAPI(private var connectionsPerStation: Int) : SearchStationAPI, RealtimeAPI {
     constructor() : this(20)
     private val stationNames = arrayOf(
         "Student Station",
@@ -139,7 +139,7 @@ class ExampleAPI(private var connectionsPerStation: Int) : StationAPI, RealtimeA
 
 }
 
-class EmptyAPI : StationAPI, RealtimeAPI {
+class EmptyAPI : SearchStationAPI, RealtimeAPI {
     override fun getRealtimeInformation(station: Station): RealtimeInfo { TODO("Not yet implemented") }
     override fun searchStations(search: String): List<Station> { TODO("Not yet implemented") }
 }
