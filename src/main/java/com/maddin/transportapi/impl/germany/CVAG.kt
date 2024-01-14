@@ -41,7 +41,7 @@ class CVAG : SearchStationAPI, RealtimeAPI {
             val vehicle = Vehicle(null, Line(vName, vName), Direction(vDirection))
 
             val departureActual = LocalDateTime.ofEpochSecond(stop.getLong("actualDeparture"), 0, zoneOffset)
-            RealtimeConnection(vehicle, Stop(station, departureActual))
+            RealtimeConnection("", Stop(station, departureActual), vehicle=vehicle) // TODO: add id
         }
 
         return RealtimeInfo(timeNow, connections)

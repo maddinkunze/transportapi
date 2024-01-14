@@ -103,11 +103,11 @@ class VMS(private val limitArea: String) : CachedSearchStationAPI, LocationStati
             return RealtimeInfo(connections)
         }
 
-        val stops = stopInfo.getJSONArray("departureList")
-        for (stopIndex in 0 until stops.length()) {
-            val stop = stops.getJSONObject(stopIndex)
+        val departures = stopInfo.getJSONArray("departureList")
+        for (connIndex in 0 until departures.length()) {
+            val conn = departures.getJSONObject(connIndex)
 
-            val vehicleInfo = stop.getJSONObject("servingLine")
+            val vehicleInfo = conn.getJSONObject("servingLine")
             var vName = vehicleInfo.getString("symbol")
             var vDirection = vehicleInfo.getString("direction")
             if (vDirection.startsWith(vName)) {
@@ -119,29 +119,29 @@ class VMS(private val limitArea: String) : CachedSearchStationAPI, LocationStati
             }
             vDirection = vDirection.removePrefix(areaPrefix)
             val vehicle = Vehicle(null, Line(vName, vName), Direction(vDirection))
+            val cid = vehicleInfo.getString("stateless")
 
             var flagsStop = Stop.FLAG_NONE
             var flagsConnection = Connection.FLAG_NONE
 
-            val tripStatus = stop.optString("realtimeTripStatus", "").split("|")
+            val tripStatus = conn.optString("realtimeTripStatus", "").split("|")
             @Suppress("KotlinConstantConditions")
             if (tripStatus.contains("TRIP_CANCELLED")) {
-                // TODO: should really be in the connection flags, since the whole trip is cancelled
-                flagsStop = flagsStop or Stop.FLAG_CANCELLED
                 flagsConnection = flagsConnection or Connection.FLAG_CANCELLED
             }
             if (tripStatus.contains("MONITORED")) {
                 flagsStop = flagsStop or Stop.FLAG_REALTIME
             }
 
-            val departurePlanned = stop.getTime("dateTime")
+            val departurePlanned = conn.getTime("dateTime")
             var departureActual = departurePlanned
-            if (stop.has("realDateTime")) {
-                departureActual = stop.getTime("realDateTime")
+            if (conn.has("realDateTime")) {
+                departureActual = conn.getTime("realDateTime")
                 flagsStop = flagsStop or Stop.FLAG_REALTIME
             }
 
-            val connection = RealtimeConnection(vehicle, Stop(station, departurePlanned=departurePlanned, departureActual=departureActual, flags=flagsStop))
+            val stop = Stop(station, departurePlanned=departurePlanned, departureActual=departureActual, flags=flagsStop)
+            val connection = RealtimeConnection(cid, stop, vehicle=vehicle, flags=flagsConnection)
             var index = connections.size
             while (index > 0) {
                 if (connections[index-1].stop.departureActual <= departureActual) { break }

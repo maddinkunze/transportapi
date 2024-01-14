@@ -1,7 +1,11 @@
+@file:Suppress("unused")
+
 package com.maddin.transportapi.impl
 
 import com.maddin.transportapi.Direction
 import com.maddin.transportapi.Line
+import com.maddin.transportapi.LocationArea
+import com.maddin.transportapi.LocationStationAPI
 import com.maddin.transportapi.RealtimeAPI
 import com.maddin.transportapi.RealtimeConnection
 import com.maddin.transportapi.RealtimeInfo
@@ -102,13 +106,14 @@ class ExampleAPI(private var connectionsPerStation: Int) : SearchStationAPI, Rea
 
         var departurePlanned = connections.lastOrNull()?.stop?.departurePlanned ?: LocalDateTime.now()
         for (i in connections.size..connectionsPerStation) {
+            val cId = Math.random().toString()
             departurePlanned = departurePlanned.plusSeconds((10 + Math.random() * 100).toLong())
             val vIndex = (Math.random() * vehicleNames.size).toInt().coerceAtMost(vehicleNames.size-1)
             val dIndex = (Math.random() * stationNames.size).toInt().coerceAtMost(stationNames.size-1)
             val vName = vehicleNames[vIndex]
             val dName = stationNames[dIndex]
             val vehicle = Vehicle(null, Line(vName, vName), Direction(dName))
-            val connection = RealtimeConnection(vehicle, Stop(station, departurePlanned))
+            val connection = RealtimeConnection(cId, Stop(station, departurePlanned=departurePlanned), vehicle=vehicle)
             connections.add(connection)
         }
 
@@ -139,7 +144,8 @@ class ExampleAPI(private var connectionsPerStation: Int) : SearchStationAPI, Rea
 
 }
 
-class EmptyAPI : SearchStationAPI, RealtimeAPI {
+class EmptyAPI : SearchStationAPI, LocationStationAPI, RealtimeAPI {
     override fun getRealtimeInformation(station: Station): RealtimeInfo { TODO("Not yet implemented") }
     override fun searchStations(search: String): List<Station> { TODO("Not yet implemented") }
+    override fun locateStations(location: LocationArea): List<Station> { TODO("Not yet implemented") }
 }

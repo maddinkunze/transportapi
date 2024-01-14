@@ -74,12 +74,14 @@ open class Stop(
 }
 
 open class Connection(
+    val id: String,
     val stops: List<Stop>,
     var vehicle: Vehicle,
     var flags: Int = FLAG_NONE)
 {
     companion object {
         const val FLAG_NONE = 0
+        const val FLAG_INCOMPLETE = 1
         const val FLAG_CANCELLED = 2
     }
 
