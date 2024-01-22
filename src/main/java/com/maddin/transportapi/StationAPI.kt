@@ -3,11 +3,38 @@ package com.maddin.transportapi
 import java.time.Duration
 import java.time.LocalDateTime
 
+interface StationCache {
+    fun addStation(station: Station)
+    fun getStation(id: String): Station?
+}
+
+open class DefaultStationCache : StationCache {
+    protected val sessionCache = mutableMapOf<String, Station>()
+    override fun addStation(station: Station) {
+        sessionCache[station.id] = station
+    }
+    override fun getStation(id: String): Station? {
+        return sessionCache[id]
+    }
+}
+
 interface StationAPI {
     fun getStation(id: String): Station
 }
 
-interface StationCache {
+interface CachedStationAPI : StationAPI {
+    val stationCache: StationCache
+    fun getStationAPI(id: String) : Station
+    override fun getStation(id: String): Station {
+        var station = stationCache.getStation(id)
+        if (station != null) { return station }
+        station = getStationAPI(id)
+        stationCache.addStation(station)
+        return station
+    }
+}
+
+interface SearchStationCache {
     fun addSearch(search: String, results: List<Station>)
     fun getSearch(search: String) : List<Station>?
     fun searchStations(search: String) : List<Station>
@@ -34,7 +61,7 @@ data class CachedItem<T>(val station: T, var updated: LocalDateTime) {
     }
 }
 
-open class DefaultStationCache(private val expiresAfter: Duration) : StationCache {
+open class DefaultSearchStationCache(private val expiresAfter: Duration) : SearchStationCache {
     @Suppress("NewApi")
     constructor() : this(Duration.ofDays(7))
     private val sessionCache = mutableMapOf<String, List<Station>>()
@@ -70,21 +97,21 @@ interface SearchStationAPI {
 }
 
 interface CachedSearchStationAPI : SearchStationAPI {
-    val stationCache: StationCache?
+    val searchStationCache: SearchStationCache?
     fun searchStationsAPI(search: String) : List<Station>
     override fun searchStations(search: String) : List<Station> {
         // if we have a session cache and we already searched for this specific station, use it
-        var stations: List<Station>? = stationCache?.getSearch(search)
+        var stations: List<Station>? = searchStationCache?.getSearch(search)
 
         // if we did not find some stations until here, call the api (might be expensive)
         if (stations == null) {
             stations = searchStationsAPI(search)
-            stationCache?.addSearch(search, stations)
+            searchStationCache?.addSearch(search, stations)
         }
 
         // if we have cached other stations that would match the search, add them
-        if (stationCache != null) {
-            stations = stationCache!!.extendSearch(search, stations)
+        if (searchStationCache != null) {
+            stations = searchStationCache!!.extendSearch(search, stations)
         }
 
         return stations

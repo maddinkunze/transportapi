@@ -8,4 +8,8 @@ interface RealtimeAPI {
 
 interface FutureRealtimeAPI : RealtimeAPI {
     fun getRealtimeInformation(station: Station, from: LocalDateTime) : RealtimeInfo
+    @Suppress("NewApi")
+    override fun getRealtimeInformation(station: Station): RealtimeInfo {
+        return getRealtimeInformation(station, LocalDateTime.now())
+    }
 }

@@ -14,6 +14,10 @@ interface Locatable {
     val location: LocationLatLon
 }
 
+interface Serving {
+    val lines: List<Line>
+}
+
 open class Station(open val id: String, open val name: String, open val location: Location?) : Serializable, Searchable {
     constructor(id: String, name: String) : this(id, name, null)
     override fun matches(search: String): Boolean {
