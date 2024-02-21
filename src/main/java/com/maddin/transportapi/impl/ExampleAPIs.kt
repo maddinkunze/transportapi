@@ -1,21 +1,32 @@
-@file:Suppress("unused")
+@file:Suppress("unused") // hopefully those apis go unused, especially in prod (ONLY use those apis, if even, for testing)
 
 package com.maddin.transportapi.impl
 
-import com.maddin.transportapi.Direction
-import com.maddin.transportapi.Line
-import com.maddin.transportapi.LocationArea
-import com.maddin.transportapi.LocationStationAPI
-import com.maddin.transportapi.RealtimeAPI
-import com.maddin.transportapi.RealtimeConnection
-import com.maddin.transportapi.RealtimeInfo
-import com.maddin.transportapi.Station
-import com.maddin.transportapi.SearchStationAPI
-import com.maddin.transportapi.Stop
-import com.maddin.transportapi.Vehicle
+import com.maddin.transportapi.components.DirectionImpl
+import com.maddin.transportapi.components.LineImpl
+import com.maddin.transportapi.endpoints.RealtimeAPI
+import com.maddin.transportapi.components.RealtimeConnection
+import com.maddin.transportapi.components.RealtimeConnectionImpl
+import com.maddin.transportapi.endpoints.RealtimeRequest
+import com.maddin.transportapi.components.StationImpl
+import com.maddin.transportapi.components.StopImpl
+import com.maddin.transportapi.components.VehicleImpl
+import com.maddin.transportapi.components.toConId
+import com.maddin.transportapi.components.toLineId
+import com.maddin.transportapi.components.toStaId
+import com.maddin.transportapi.endpoints.LocatePOIAPI
+import com.maddin.transportapi.endpoints.LocatePOIRequest
+import com.maddin.transportapi.endpoints.LocatePOIResponse
+import com.maddin.transportapi.endpoints.RealtimeResponse
+import com.maddin.transportapi.endpoints.RealtimeResponseImpl
+import com.maddin.transportapi.endpoints.SearchPOIAPI
+import com.maddin.transportapi.endpoints.SearchPOIRequest
+import com.maddin.transportapi.endpoints.SearchPOIResponse
+import com.maddin.transportapi.endpoints.SearchPOIResponseImpl
+import com.maddin.transportapi.utils.InvalidRequestPOIException
 import java.time.LocalDateTime
 
-class ExampleAPI(private var connectionsPerStation: Int) : SearchStationAPI, RealtimeAPI {
+class ExampleAPI(private var connectionsPerStation: Int) : SearchPOIAPI, RealtimeAPI {
     constructor() : this(20)
     private val stationNames = arrayOf(
         "Student Station",
@@ -89,18 +100,18 @@ class ExampleAPI(private var connectionsPerStation: Int) : SearchStationAPI, Rea
         "785",
         "82B"
     )
-    private val cachedConnections = mutableMapOf<String, RealtimeInfo>()
+    private val cachedConnections = mutableMapOf<String, RealtimeResponse>()
 
     @Suppress("NewApi")
-    override fun getRealtimeInformation(station: Station): RealtimeInfo {
-        val curStationId = station.id
-        if (!cachedConnections.contains(curStationId)) {
-            cachedConnections[curStationId] = RealtimeInfo(station, mutableListOf())
+    override fun getRealtimeInformation(request: RealtimeRequest): RealtimeResponse {
+        val curStationId = request.poi.id ?: throw InvalidRequestPOIException()
+        if (!cachedConnections.contains(curStationId.uuid)) {
+            cachedConnections[curStationId.uuid] = RealtimeResponseImpl(request=request, connections=mutableListOf())
         }
 
-        val connections = cachedConnections[curStationId]?.connections as MutableList? ?: mutableListOf()
+        val connections = cachedConnections[curStationId.uuid]?.connections as MutableList? ?: mutableListOf()
         for (connection in connections) {
-            if (connection.departsIn() > -30) { continue }
+            if ((connection.departsIn()?.seconds?:0) > -30) { continue }
             connections.remove(connection)
         }
 
@@ -112,40 +123,40 @@ class ExampleAPI(private var connectionsPerStation: Int) : SearchStationAPI, Rea
             val dIndex = (Math.random() * stationNames.size).toInt().coerceAtMost(stationNames.size-1)
             val vName = vehicleNames[vIndex]
             val dName = stationNames[dIndex]
-            val vehicle = Vehicle(null, Line(vName, vName), Direction(dName))
-            val connection = RealtimeConnection(cId, Stop(station, departurePlanned=departurePlanned), vehicle=vehicle)
+            val vehicle = VehicleImpl(line=LineImpl(id=vName.toLineId(), name=vName), direction=DirectionImpl(name=dName))
+            val connection = RealtimeConnectionImpl(id=cId.toConId(), StopImpl(poi=request.poi, departurePlanned=departurePlanned), vehicle=vehicle)
             connections.add(connection)
         }
 
-        return getRealtimeInfoCopy(curStationId)
+        return getRealtimeInfoCopy(request)
     }
 
     @Suppress("NewApi")
-    private fun getRealtimeInfoCopy(stationId: String): RealtimeInfo {
+    private fun getRealtimeInfoCopy(request: RealtimeRequest): RealtimeResponse {
         val connections = mutableListOf<RealtimeConnection>()
-        val cachedInfo = cachedConnections[stationId] ?: return RealtimeInfo(Station("", ""), emptyList())
+        val cachedInfo = cachedConnections[request.poi.id?.uuid ?: throw InvalidRequestPOIException()] ?: return RealtimeResponseImpl(request=request, connections=emptyList())
         for (connection in cachedInfo.connections) {
             connections.add(connection)
         }
-        return RealtimeInfo(connections)
+        return RealtimeResponseImpl(request=request, connections=connections)
     }
 
-    override fun searchStations(search: String): List<Station> {
-        val stations = mutableListOf<Station>()
+    override fun searchPOIs(request: SearchPOIRequest): SearchPOIResponse {
+        val stations = mutableListOf<StationImpl>()
         for (stationIndex in stationNames.indices) {
             val stationName = stationNames[stationIndex]
-            if (!stationName.startsWith(search, ignoreCase = true)) {
+            if (!stationName.startsWith(request.search, ignoreCase = true)) {
                 continue
             }
-            stations.add(Station(stationIndex.toString(), stationName))
+            stations.add(StationImpl(stationIndex.toString().toStaId(), stationName))
         }
-        return stations
+        return SearchPOIResponseImpl(request=request, pois=stations)
     }
 
 }
 
-class EmptyAPI : SearchStationAPI, LocationStationAPI, RealtimeAPI {
-    override fun getRealtimeInformation(station: Station): RealtimeInfo { TODO("Not yet implemented") }
-    override fun searchStations(search: String): List<Station> { TODO("Not yet implemented") }
-    override fun locateStations(location: LocationArea): List<Station> { TODO("Not yet implemented") }
+class EmptyAPI : SearchPOIAPI, LocatePOIAPI, RealtimeAPI {
+    override fun getRealtimeInformation(request: RealtimeRequest): RealtimeResponse { TODO("Not yet implemented") }
+    override fun searchPOIs(request: SearchPOIRequest): SearchPOIResponse { TODO("Not yet implemented") }
+    override fun locatePOIs(request: LocatePOIRequest): LocatePOIResponse { TODO("Not yet implemented") }
 }

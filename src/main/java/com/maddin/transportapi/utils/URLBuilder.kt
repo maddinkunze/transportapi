@@ -1,52 +1,67 @@
 package com.maddin.transportapi.utils
 
-import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
-typealias typefun<T> = (T) -> String?
+fun String.url(): String {
+    return URLEncoder.encode(this, "UTF-8")
+}
 
-class APIEndpoint<S, T> {
-    internal lateinit var method: typefun<S>
-    internal lateinit var base: typefun<S>
-    internal val paths = mutableListOf<typefun<S>>()
-    internal val params = mutableListOf<typefun<S>>()
+class URLBuilder<T> {
+    private lateinit var host: (T) -> String
+    private val path = mutableListOf<(T) -> String?>()
+    private val params = mutableListOf<Pair<String, (T) -> String?>>()
 
-    fun setMethod(method: String): APIEndpoint<S, T> {
-        this.method = { _ -> method }
+    fun setHost(host: String): URLBuilder<T> {
+        this.host = { _ -> host}
         return this
     }
 
-    fun setMethod(method: typefun<S>): APIEndpoint<S, T> {
-        this.method = method
+    fun setHost(evaluator: (T) -> String): URLBuilder<T> {
+        host = evaluator
         return this
     }
 
-    fun setBase(base: String): APIEndpoint<S, T> {
-        this.base = { _ -> base }
+    fun addPath(path: String): URLBuilder<T> {
+        this.path.add { _ -> path }
         return this
     }
 
-    fun setBase(base: typefun<S>): APIEndpoint<S, T> {
-        this.base = base
+    fun addPaths(vararg paths: String): URLBuilder<T> {
+        for (path in paths) {
+            addPath(path)
+        }
         return this
     }
 
-    fun addPath(path: String): APIEndpoint<S, T> {
-        paths.add { _ -> path }
+    fun addPath(evaluator: (T) -> String?): URLBuilder<T> {
+        path.add(evaluator)
         return this
     }
 
-    fun addPath(path: typefun<S>): APIEndpoint<S, T> {
-        paths.add(path)
-        return this
-    }
-    fun addParam(key: String, value: String): APIEndpoint<S, T> {
-
+    fun addParam(param: String, value: String): URLBuilder<T> {
+        params.add(Pair(param) { _ -> value })
         return this
     }
 
-    fun <S> call(): T? {
-        URL("")
-        return null
+    fun addParam(param: String, evaluator: (T) -> String?): URLBuilder<T> {
+        params.add(Pair(param, evaluator))
+        return this
+    }
+
+    fun addParams(vararg params: String): URLBuilder<T> {
+        for (param in params) {
+            val split = param.split("=", limit=2)
+            addParam(split[0], split[1])
+        }
+        return this
+    }
+
+    fun build(value: T): String {
+        val host = host(value)
+        val path = path.mapNotNull { it(value)?.url() }.joinToString("/")
+        var params = params.mapNotNull { p -> p.second(value)?.url()?.let { "${p.first}=${it}" } }.joinToString("&")
+        if (params.isNotBlank()) { params = "?$params" }
+        return "$host/$path$params"
     }
 }
