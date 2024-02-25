@@ -9,7 +9,6 @@ import com.maddin.transportapi.utils.Translatable
 import com.maddin.transportapi.utils.Translations
 import java.io.Serializable
 import java.util.Locale
-import kotlin.reflect.KClass
 
 
 interface POIIdentifier : Identifier
@@ -28,12 +27,11 @@ interface POI : Serializable, Searchable, Translatable, MaybeIdentifiable, Named
     override fun translate(locale: Locale?, translations: Translations?): String = name
 }
 
-class POIImpl(
-    override val id: POIIdentifier? = null,
-    override val name: String,
-    override val location: Location? = null
+open class POIImpl(
+    override var id: POIIdentifier? = null,
+    override var name: String,
+    override var location: Location? = null
 ) : POI
-
 
 interface StreetIdentifier : POIIdentifier
 open class StreetIdentifierImpl(uuid: String) : POIIdentifierImpl(uuid), StreetIdentifier

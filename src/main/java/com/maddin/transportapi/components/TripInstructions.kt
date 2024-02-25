@@ -385,22 +385,22 @@ open class WalkInstructionTurn(
 open class InstructedTripConnection(
     id: ConnectionIdentifier? = null,
     stops: List<Stop>,
-    val instructions: List<TripInstruction>? = null,
-    vehicle: Vehicle? = null,
+    open val instructions: List<TripInstruction>? = null,
+    modeOfTransport: ModeOfTransport? = null,
     path: List<LocationLatLon>? = null,
     flags: Int = Connection.FLAG_NONE
-) : TripConnectionImpl(id=id, stops=stops, vehicle=vehicle, path=path, flags=flags)
+) : TripConnectionImpl(id=id, stops=stops, modeOfTransport=modeOfTransport, path=path, flags=flags)
 
 class TripWalkConnection(
     id: ConnectionIdentifier? = null,
     stops: List<Stop>,
-    instructions: List<WalkInstruction>? = null,
-    vehicle: Vehicle? = DEFAULT_VEHICLE_WALK,
+    override val instructions: List<WalkInstruction>? = null,
+    modeOfTransport: ModeOfTransport? = DEFAULT_VEHICLE_WALK,
     path: List<LocationLatLon>? = null,
     flags: Int = Connection.FLAG_NONE
-) : InstructedTripConnection(id=id, stops=stops, instructions=instructions, vehicle=vehicle, path=path, flags=flags) {
+) : InstructedTripConnection(id=id, stops=stops, instructions=instructions, modeOfTransport=modeOfTransport, path=path, flags=flags) {
     companion object {
-        val DEFAULT_VEHICLE_WALK = VehicleImpl(type=VehicleTypes.WALK)
-        val DEFAULT_VEHICLE_INTERCHANGE = VehicleImpl(type=VehicleTypes.INTERCHANGE)
+        val DEFAULT_VEHICLE_WALK = MOTImpl(motType=MOTTypes.WALK)
+        val DEFAULT_VEHICLE_INTERCHANGE = MOTImpl(motType=MOTTypes.INTERCHANGE)
     }
 }

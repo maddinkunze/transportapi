@@ -82,7 +82,7 @@ fun String.toConId() = ConnectionIdentifierImpl(this)
 interface Connection : MaybeIdentifiable {
     override val id: ConnectionIdentifier?
     val stops: List<Stop>
-    val vehicle: Vehicle?
+    val modeOfTransport: ModeOfTransport?
     val path: List<LocationLatLon>?
     val flags: Int
 
@@ -91,15 +91,13 @@ interface Connection : MaybeIdentifiable {
         const val FLAG_CANCELLED = 1
     }
 
-    fun isCancelled(): Boolean {
-        return (flags and FLAG_CANCELLED) > 0
-    }
+    val isCancelled: Boolean; get() = (flags and FLAG_CANCELLED) > 0
 }
 
 open class ConnectionImpl(
     override val id: ConnectionIdentifier? = null,
     override var stops: List<Stop>,
-    override var vehicle: Vehicle? = null,
+    override var modeOfTransport: ModeOfTransport? = null,
     override var path: List<LocationLatLon>? = null,
     override var flags: Int = Connection.FLAG_NONE
 ) : Connection

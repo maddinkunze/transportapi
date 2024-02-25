@@ -9,5 +9,5 @@ java {
 }
 
 dependencies {
-    implementation group: 'org.json', name: 'json', version: '20190722'
+    implementation group: 'org.json', name: 'json', version: '20240205'
 }

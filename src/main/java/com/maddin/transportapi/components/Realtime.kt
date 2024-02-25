@@ -12,22 +12,22 @@ interface RealtimeConnection : Connection, MaybeHasArrivalDeparture {
     override val arrivalPlanned; get() = stop.arrivalPlanned
     override val arrivalActual; get() = stop.arrivalActual
 
-    val isStopCancelled; get() = super.isCancelled() || stop.isCancelled
+    val isStopCancelled; get() = super.isCancelled || stop.isCancelled
 }
 
 open class RealtimeConnectionImpl(
     id: ConnectionIdentifier? = null,
     override var stop: Stop,
     stops: List<Stop> = listOf(stop),
-    vehicle: Vehicle? = null,
+    modeOfTransport: ModeOfTransport? = null,
     path: List<LocationLatLon>? = null,
     flags: Int = Connection.FLAG_NONE
-) : ConnectionImpl(id=id, stops=stops, vehicle=vehicle, path=path, flags=flags), RealtimeConnection {
+) : ConnectionImpl(id=id, stops=stops, modeOfTransport=modeOfTransport, path=path, flags=flags), RealtimeConnection {
     companion object {
         fun fromExisting(c: Connection, s: POI): RealtimeConnection? {
             if (c is RealtimeConnection) { return c }
             val stop = c.stops.find { it.poi.id == s.id } ?: return null
-            return RealtimeConnectionImpl(c.id, stop, c.stops, c.vehicle, c.path, c.flags)
+            return RealtimeConnectionImpl(c.id, stop, c.stops, c.modeOfTransport, c.path, c.flags)
         }
     }
 }

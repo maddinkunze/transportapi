@@ -22,10 +22,10 @@ open class TripConnectionImpl(
     stops: List<Stop>,
     override var from: Stop = stops.first(),
     override var to: Stop = stops.last(),
-    vehicle: Vehicle? = null,
+    modeOfTransport: ModeOfTransport? = null,
     path: List<LocationLatLon>? = null,
     flags: Int = Connection.FLAG_NONE
-) : ConnectionImpl(id=id, stops=stops, vehicle=vehicle, path=path, flags=flags), TripConnection
+) : ConnectionImpl(id=id, stops=stops, modeOfTransport=modeOfTransport, path=path, flags=flags), TripConnection
 
 interface TripIdentifier : Identifier
 open class TripIdentifierImpl(uuid: String) : IdentifierImpl(uuid), TripIdentifier

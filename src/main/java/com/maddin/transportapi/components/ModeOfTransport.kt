@@ -5,8 +5,9 @@ import com.maddin.transportapi.utils.IdentifierImpl
 import com.maddin.transportapi.utils.MaybeIdentifiable
 import com.maddin.transportapi.utils.MaybeNamed
 import com.maddin.transportapi.utils.Named
+import java.io.Serializable
 
-// TODO: there has to be an easier way of doing this
+/*// TODO: there has to be an easier way of doing this
 interface VehicleType {
     val supertypes: List<VehicleType>
 
@@ -77,7 +78,7 @@ enum class VehicleTypes(
     override fun isMotorized(): Boolean {
         return motorized
     }
-}
+}*/
 
 interface LineVariantIdentifier : Identifier {
     val variantId: String
@@ -92,15 +93,17 @@ fun String.toLiVaId(): LineVariantIdentifierImpl {
     return LineVariantIdentifierImpl(split[0], split[1].toLineId())
 }
 
-interface LineVariant : MaybeIdentifiable {
+interface LineVariant : Serializable, MaybeIdentifiable {
     override val id: LineVariantIdentifier?
+    val name: String?
     val direction: Direction?
-    val defaultVehicleType: VehicleType?
+    val defaultMOT: MOTType?
 }
 open class LineVariantImpl(
     override var id: LineVariantIdentifier? = null,
+    override var name: String? = null,
     override var direction: Direction? = null,
-    override var defaultVehicleType: VehicleType? = null
+    override var defaultMOT: MOTType? = null
 ): LineVariant
 
 interface LineIdentifier : Identifier
@@ -108,20 +111,20 @@ open class LineIdentifierImpl(uuid: String) : IdentifierImpl(uuid), LineIdentifi
 fun String.toLineId() = LineIdentifierImpl(this)
 
 
-interface Line : MaybeIdentifiable, MaybeNamed {
+interface Line : Serializable, MaybeIdentifiable, MaybeNamed {
     override val id: LineIdentifier?
     override val name: String?
-    val variants: List<LineVariant>
-    val defaultVehicleType: VehicleType?
+    val variants: List<LineVariant>?
+    val defaultMOTType: MOTType?
 }
 open class LineImpl(
     override var id: LineIdentifier? = null,
     override var name: String? = null,
-    override val variants: List<LineVariant> = mutableListOf(),
-    override var defaultVehicleType: VehicleType? = null
+    override val variants: List<LineVariant>? = null,
+    override var defaultMOTType: MOTType? = null
 ) : Line
 
-interface Direction : Named {
+interface Direction : Named, Serializable {
     override val name: String
 }
 
@@ -130,21 +133,91 @@ open class DirectionImpl(override var name: String) : Direction
 interface StationDirection : Station, Direction
 open class StationDirectionImpl(station: Station) : StationDirection, Station by station
 
-interface VehicleIdentifier : Identifier
-open class VehicleIdentifierImpl(uuid: String) : IdentifierImpl(uuid), VehicleIdentifier
-fun String.toVehId() = VehicleIdentifierImpl(this)
+interface ModeOfTransportIdentifier : Identifier
+open class ModeOfTransportIdentifierImpl(uuid: String) : IdentifierImpl(uuid), ModeOfTransportIdentifier
 
+interface ModeOfTransport : Serializable {
+    val id: ModeOfTransportIdentifier?
+    val motType: MOTType?
+}
+typealias MOT = ModeOfTransport
+open class MOTImpl(
+    override val id: ModeOfTransportIdentifier? = null,
+    override val motType: MOTType? = null
+) : ModeOfTransport
 
-interface Vehicle : MaybeIdentifiable {
-    override val id: VehicleIdentifier?
-    val type: VehicleType?
+interface LineMOT : ModeOfTransport {
     val line: Line?
-    val direction: Direction?
+    val variant: LineVariant?
+
+    val symbol; get() = variant?.name ?: line?.name
+    val direction; get() = variant?.direction?.name
+}
+open class LineMOTImpl(
+    id: ModeOfTransportIdentifier? = null,
+    motType: MOTType? = null,
+    override val line: Line? = null,
+    override val variant: LineVariant? = null
+) : LineMOT, MOTImpl(id=id, motType=motType)
+
+
+interface MOTTypeIdentifier : Identifier
+open class MOTTypeIdentifierImpl(uuid: String) : IdentifierImpl(uuid), MOTTypeIdentifier
+fun String.toMOTTId() = MOTTypeIdentifierImpl(this)
+
+interface ModeOfTransportType : MaybeIdentifiable, Serializable {
+    override val id: MOTTypeIdentifier?; get() = null
+}
+typealias MOTType = ModeOfTransportType
+
+interface IndividualMOTType : MOTType
+
+interface SharedMOTType : MOTType {
+    val sharedWithAtLeast: Int?; get() = null
+    val sharedWithExactly: Int?; get() = null
+    val sharedWithAtMost: Int?;  get() = null
 }
 
-open class VehicleImpl(
-    override var id: VehicleIdentifier? = null,
-    override var type: VehicleType? = null,
-    override var line: Line? = null,
-    override var direction: Direction? = null
-) : Vehicle
+interface ManualMOTType : MOTType {
+    val suggestedSpeed: Speed?; get() = null
+}
+interface MotorizedMOTType : MOTType {
+    val maximumSpeed: Speed?; get() = null
+}
+interface ServicedMOTType : MotorizedMOTType // serviced as in you are not the driver
+interface AutomatedMOTType : ServicedMOTType // automated as in there is no driver
+
+interface Foot : ManualMOTType
+interface Vehicle : MOTType {
+    val seats: Int?; get() = null
+    val stands: Int?; get() = null
+}
+
+interface PublicTransport : SharedMOTType, ServicedMOTType {
+    interface AreaClassification
+    enum class AreaClassifications : AreaClassification {
+        CITY,
+        REGIONAL,
+        INTERREGIONAL,
+        INTERCITY,
+        INTERSTATE,
+        INTERNATIONAL,
+        INTERCONTINENTAL,
+        INTERPLANETARY,
+        INTERSTELLAR // who knows what the future brings i guess
+    }
+    val areaClassification: AreaClassification?; get() = null
+}
+val MOTType.isPublicTransport; get() = this is PublicTransport
+
+interface ReplacementMOT : MOTType {
+    val replaces: MOTType?
+}
+val MOTType.isReplacement; get() = this is ReplacementMOT
+
+interface StreetMOT : MOTType
+interface RailMOT : MOTType
+interface AirMOT : MOTType {
+    val maximumAirHeight: Distance?; get() = null
+}
+interface WaterMOT : MOTType

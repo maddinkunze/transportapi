@@ -9,13 +9,18 @@ import com.maddin.transportapi.utils.InvalidResponseContentException
 import com.maddin.transportapi.components.RealtimeConnection
 import com.maddin.transportapi.components.StationImpl
 import com.maddin.transportapi.components.LocationLatLon
-import com.maddin.transportapi.components.Direction
 import com.maddin.transportapi.components.DirectionImpl
 import com.maddin.transportapi.components.Line
 import com.maddin.transportapi.components.LineImpl
+import com.maddin.transportapi.components.LineMOT
+import com.maddin.transportapi.components.LineMOTImpl
+import com.maddin.transportapi.components.LineVariant
 import com.maddin.transportapi.components.LineVariantImpl
 import com.maddin.transportapi.components.LocationAreaRect
 import com.maddin.transportapi.components.LocationLatLonImpl
+import com.maddin.transportapi.components.MOTImpl
+import com.maddin.transportapi.components.MOTType
+import com.maddin.transportapi.components.MOTTypes
 import com.maddin.transportapi.components.Platform
 import com.maddin.transportapi.components.PlatformImpl
 import com.maddin.transportapi.components.RealtimeConnectionImpl
@@ -34,10 +39,12 @@ import com.maddin.transportapi.components.TripConnectionImpl
 import com.maddin.transportapi.components.TripImpl
 import com.maddin.transportapi.endpoints.TripSearchRequest
 import com.maddin.transportapi.components.TripWalkConnection
-import com.maddin.transportapi.components.Vehicle
-import com.maddin.transportapi.components.VehicleImpl
-import com.maddin.transportapi.components.VehicleType
-import com.maddin.transportapi.components.VehicleTypes
+import com.maddin.transportapi.components.ModeOfTransport
+import com.maddin.transportapi.components.POIIdentifierImpl
+import com.maddin.transportapi.components.PublicTransport
+import com.maddin.transportapi.components.StationIdentifier
+import com.maddin.transportapi.components.Tram
+import com.maddin.transportapi.components.Walk
 import com.maddin.transportapi.components.WalkInstruction
 import com.maddin.transportapi.components.WalkInstructionEnter
 import com.maddin.transportapi.components.WalkInstructionGo
@@ -47,7 +54,6 @@ import com.maddin.transportapi.components.WalkInstructionTurn
 import com.maddin.transportapi.components.toLiVaId
 import com.maddin.transportapi.components.toLineId
 import com.maddin.transportapi.components.toPlatId
-import com.maddin.transportapi.components.toStaId
 import com.maddin.transportapi.endpoints.CachedPOIAPI
 import com.maddin.transportapi.endpoints.CachedSearchPOIAPI
 import com.maddin.transportapi.endpoints.ConnectionAPI
@@ -61,6 +67,7 @@ import com.maddin.transportapi.endpoints.LocatePOIResponseImpl
 import com.maddin.transportapi.endpoints.POIRequest
 import com.maddin.transportapi.endpoints.POIResponse
 import com.maddin.transportapi.endpoints.POIResponseImpl
+import com.maddin.transportapi.endpoints.POIUseCase
 import com.maddin.transportapi.endpoints.RealtimeResponse
 import com.maddin.transportapi.endpoints.RealtimeResponseImpl
 import com.maddin.transportapi.endpoints.SearchPOIRequest
@@ -96,13 +103,24 @@ val FORMATTER_TIME_SEC: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:s
 val FORMATTER_DATETIME_SEC: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd HH:mm:ss")
 const val FORMAT_COORDS = "WGS84[DD.DDDDD]"
 
+
+interface ChemnitzBahn : Tram { override val areaClassification; get() = PublicTransport.AreaClassifications.REGIONAL }
+
+interface VMSStationId {
+    val vmsStateless: String
+}
+class VMSStationIdImpl(override val vmsStateless: String) : StationIdentifier, VMSStationId {
+    override val uuid = vmsStateless
+}
+private fun String.toStaId() = VMSStationIdImpl(this)
+
 @Suppress("unused")
 class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, LocatePOIAPI,
     RealtimeAPI, TripSearchAPI, ConnectionAPI {
     constructor() : this("")
 
     private val limitAreaRegex = if (limitArea.isEmpty()) { null } else { Regex("(?:([\\s0-9a-zA-Z\\u00F0-\\u02AF]*)\\s)?\\($limitArea\\)(, )(.*)") }
-    private val prefixStops = if (limitArea.isEmpty()) "" else "$limitArea, "
+    //private val prefixStops = if (limitArea.isEmpty()) "" else "$limitArea, "
 
     companion object {
         private const val hostBase = "https://efa.vvo-online.de"
@@ -110,15 +128,26 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
         private const val paramOutputJson = "outputFormat=JSON"
         private const val paramCoordOutput = "coordOutputFormat=$FORMAT_COORDS"
 
+        private val urlStopGet = URLBuilder<VMSStationId>()
+            .setHost(hostBase).addPaths(pathBase, "XSLT_STOPFINDER_REQUEST")
+            .addParams(paramOutputJson, paramCoordOutput, "type_sf=any")
+            .addParam("nameInfo_sf") { it.vmsStateless }
+
         private val urlStopLines = URLBuilder<String>()
             .setHost(hostBase).addPaths(pathBase, "XSLT_SELTT_REQUEST")
             .addParams(paramOutputJson, "type_seltt=any")
             .addParam("nameInfo_seltt") { id -> id }
 
-        private val urlStopSearch = URLBuilder<String>()
+        private class SearchRequestVMS(val request: SearchPOIRequest, val area: String?)
+        private val urlStopSearch = URLBuilder<SearchRequestVMS>()
             .setHost(hostBase).addPaths(pathBase, "XSLT_STOPFINDER_REQUEST")
-            .addParams(paramOutputJson, paramCoordOutput, "type_sf=any")
-            .addParam("name_sf") { search -> search }
+            .addParams(paramOutputJson, paramCoordOutput)
+            .addParam("type_sf") { when {
+                it.request.useCase == POIUseCase.REALTIME -> "stop"
+                else -> "any"
+            } }
+            .addParam("place_sf") { it.area }
+            .addParam("name_sf") { it.request.search }
 
         private val urlStopLocate = URLBuilder<LocationAreaRect>()
             .setHost(hostBase).addPaths(pathBase, "XSLT_COORD_REQUEST")
@@ -130,7 +159,7 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
         private val urlRealtime = URLBuilder<RealtimeRequest>()
             .setHost(hostBase).addPaths(pathBase, "XSLT_DM_REQUEST")
             .addParams(paramOutputJson, "language=de", "mode=direct", "useAllStops=1", "type_dm=any", "useRealtime=1")
-            .addParam("name_dm") { info -> info.poi.id?.uuid ?: throw InvalidRequestPOIException("Given POI has no valid id") }
+            .addParam("name_dm") { info -> (info.poi.id as? VMSStationId)?.vmsStateless ?: throw InvalidRequestPOIException("Given POI has no valid id") }
             .addParam("itdDateDayMonthYear") { info -> info.time?.format(FORMATTER_DATE) }
             .addParam("itdTime") { info -> info.time?.format(FORMATTER_TIME) }
 
@@ -164,9 +193,7 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
             return "%.6f:%.6f:$FORMAT_COORDS".format(Locale.ROOT, coords.lon, coords.lat)
         }
 
-        val VT_CHEMNITZ_BAHN = object : VehicleType {
-            override val supertypes = listOf(VehicleTypes.TRAM)
-        }
+        object CHEMNITZ_BAHN : ChemnitzBahn
     }
 
     override val poiCache = POICacheImpl()
@@ -175,7 +202,8 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
     override fun getPOIAPI(request: POIRequest): POIResponse = wrapExceptions { handler ->
         handler.default = { POIResponseImpl(request=request, poi=null, exceptions=handler.combineExceptions()) }
 
-        val requestUrlS = urlStopSearch.build(request.poiId.uuid)
+        val requestUrlS = urlStopGet.build((request.poiId as? VMSStationId) ?:
+            throw InvalidRequestPOIException("Given POI has no valid id"))
         handler.add("url station: $requestUrlS")
 
         // get the json response from the server
@@ -205,15 +233,19 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
     override fun searchPOIsAPI(request: SearchPOIRequest): SearchPOIResponse = wrapExceptions { handler ->
         handler.default = { SearchPOIResponseImpl(request=request, pois=emptyList(), exceptions=handler.combineExceptions()) }
 
-        val requestUrl = urlStopSearch.build(prefixStops+request.search)
+        val requestUrl = urlStopSearch.build(SearchRequestVMS(request, limitArea))
         handler.add("url: $requestUrl")
+
+        if (request.search.lowercase().endsWith("reichss")) {
+            println("MADDIN101: url $requestUrl")
+        }
 
         val data = URL(requestUrl).readText()
         handler.add("data: $data")
         val stationsRaw = JSONObject(data)
 
         val stationsArray = getStationResponse1(stationsRaw, handler) ?: JSONArray()
-        SearchPOIResponseImpl(request=request, pois=parseArray(stationsArray, ::parseStation1, handler))
+        SearchPOIResponseImpl(request=request, pois=parseArray(stationsArray, ::parseStation1, handler, ::verifyStation1))
     }
 
     override fun getRealtimeInformation(request: RealtimeRequest): RealtimeResponse = wrapExceptions { handler ->
@@ -229,7 +261,7 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
         val departuresRaw = if (obj.isNull("departureList")) { JSONArray() } else { obj.optJSONArray("departureList") ?:
             throw InvalidResponseContentException("Realtime response does not have a valid key \"departureList\"")
         }
-        val departures = parseArray(departuresRaw, ::parseRealtimeConnection1, handler, ::filterRealtimeConnection1)
+        val departures = parseArray(departuresRaw, ::parseRealtimeConnection1, handler, ::filterRealtimeConnection1).sortedBy { it.estimateDepartureActual() }
 
         return RealtimeResponseImpl(request, departures, handler.combineExceptions())
     }
@@ -379,6 +411,10 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
         )
     }
 
+    private fun verifyStation1(obj: JSONObject): Boolean {
+        return obj.optStringNull("anyType") == "stop"
+    }
+
     private fun parseStation1(obj: JSONObject, handler: ExceptionHandler<*>): StationImpl? {
         //if (!isPOIStop1(obj)) { return null } // TODO: verify function
         //if (!isPOIInArea1(obj)) { return null }
@@ -463,7 +499,7 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
             val lineName = obj.optStringNull("number") ?:
                 return handler.raise(InvalidResponseContentException("Line has no valid key \"number\" (name/number)"), restoreTo=saveCount)
             val lineType = parseVehicleType(obj.optStringNull("product"), lineName, handler)
-            val line = LineImpl(id=lineId.toLineId(), name=lineName, variants=mutableListOf(), defaultVehicleType=lineType)
+            val line = LineImpl(id=lineId.toLineId(), name=lineName, variants=mutableListOf(), defaultMOTType=lineType)
             existingLines?.put(lineId, line)
             line
         }
@@ -482,6 +518,21 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
             return handler.raise(InvalidResponseContentException("Lines parent object has no key \"mode\" from which line data could be inferred"))
 
         return parseLine1(line, existingLines, handler)
+    }
+
+    private fun parseLine3(obj: JSONObject, handler: ExceptionHandler<*>): Line? {
+        val lineId = obj.optStringNull("stateless")?.toLineId()
+        handler.add("line id: $lineId")
+        var lineName = obj.optStringNull("symbol")
+        if (lineName.isNullOrEmpty()) {
+            val trainType = obj.optStringNull("trainType")
+            val trainName = obj.optStringNull("trainNum")
+            lineName = if (!trainType.isNullOrEmpty() && !trainName.isNullOrEmpty()) { "$trainType$trainName" } else { lineName }
+        }
+
+        if (lineName == null && lineId == null) { return handler.raise(InvalidResponseContentException("Line has neither keys \"stateless\" (line id) nor \"symbol\" (line name)")) }
+
+        return LineImpl(id=lineId, name=lineName)
     }
 
     private fun <T, S> parseMap(arr: JSONArray, parser: (JSONObject, MutableMap<T, S>, ExceptionHandler<*>) -> Unit, handler: ExceptionHandler<*>): Map<T, S> {
@@ -575,7 +626,7 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
             poi=station, platformPlanned=platform,
             departurePlanned=depPlanned, departureActual=depActual,
             arrivalPlanned=arrPlanned, arrivalActual=arrActual,
-            flags = flags
+            flags=flags
         )
     }
 
@@ -617,7 +668,6 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
             flags = flags or Stop.FLAG_REALTIME
         }
 
-
         return StopImpl(
             poi=station, platformPlanned=platform,
             departurePlanned=depPlanned, departureActual=depActual,
@@ -639,11 +689,11 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
 
         val tripId = obj.optJSONObject("diva")?.optStringNull("tripCode")
 
-        val vehicle = parseVehicle2(obj.optJSONObject("servingLine") ?:
+        val mot = parseMOT2(obj.optJSONObject("servingLine") ?:
             return handler.raise(InvalidResponseContentException("Realtime connection has no key \"servingLine\" (vehicle)"))
         , handler) ?: return null
 
-        val id = ConnectionIdentifierVMS.make(vehicle.line, tripId, stop)
+        val id = ConnectionIdentifierVMS.make((mot as? LineMOT)?.line, tripId, stop)
 
         var flags = Connection.FLAG_NONE
         val tripStatus = obj.optString("realtimeTripStatus").split("|")
@@ -651,7 +701,7 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
             flags = flags or Connection.FLAG_CANCELLED
         }
 
-        return RealtimeConnectionImpl(id=id, stop=stop, vehicle=vehicle, flags=flags)
+        return RealtimeConnectionImpl(id=id, stop=stop, modeOfTransport=mot, flags=flags)
     }
 
     private fun parseTime1(time: String, handler: ExceptionHandler<*>): LocalDateTime? {
@@ -746,43 +796,28 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
         return path.split(' ').mapNotNull { parseCoords1(it, handler) }
     }
 
-    private fun parseVehicle1(obj: JSONObject, handler: ExceptionHandler<*>): Vehicle? {
-        val direction = parseDestination1(obj, handler)
+    private fun parseMOT1(obj: JSONObject, handler: ExceptionHandler<*>): ModeOfTransport? {
+        val variant = parseLineVariant1(obj, handler)
         val line = parseLine1(obj, null, handler)
-        val type = parseVehicleType(obj.optStringNull("product"), line?.name, handler) ?: line?.defaultVehicleType
+        val type = parseVehicleType(obj.optStringNull("product"), line?.name, handler) ?: line?.defaultMOTType
 
-        if ((direction == null) && (line == null) && (type == null)) { return null }
-        return VehicleImpl(type=type, direction=direction, line=line)
+        if ((variant == null) && (line == null)) {
+            if (type == null) { return null }
+            return MOTImpl(motType=type)
+        }
+        return LineMOTImpl(motType=type, variant=variant, line=line)
     }
 
-    private fun parseVehicle2(obj: JSONObject, handler: ExceptionHandler<*>): Vehicle? {
-        var lineNameS = obj.optStringNull("symbol")
-        val lineId = obj.optStringNull("stateless")?.toLineId()
+    private fun parseMOT2(obj: JSONObject, handler: ExceptionHandler<*>): ModeOfTransport? {
+        val line = parseLine3(obj, handler)
+        val variant = parseLineVariant2(obj, handler)
+        val type = parseVehicleType(obj.optStringNull("name"), line?.name, handler)
 
-        var destinationS = obj.optStringNull("direction")
-        if (lineNameS != null && destinationS?.startsWith(lineNameS) == true) {
-            val destinationSplit = destinationS.split(" ", limit=2)
-            if (destinationSplit.size > 1) {
-                lineNameS = destinationSplit[0]
-                destinationS = destinationSplit[1]
-            }
-        }
-
-        val destinationId = obj.optStringNull("destID")
-        val destination = when {
-            destinationS == null -> null
-            destinationId != null -> StationDirectionImpl(StationImpl(id=destinationId.toStaId(), name=cleanStationName(destinationS, handler)))
-            else -> DirectionImpl(destinationS)
-        }
-
-        val line = if ((lineNameS != null) || (lineId != null)) { LineImpl(id=lineId, name=lineNameS) } else { null }
-        val type = parseVehicleType(obj.optStringNull("name"), lineNameS, handler)
-
-        if (line == null && destination == null) {
+        if (line == null && variant == null) {
             return handler.raise(InvalidResponseContentException("No line or destination could be parsed"))
         }
 
-        return VehicleImpl(type=type, line=line, direction=destination)
+        return LineMOTImpl(motType=type, line=line, variant=variant)
     }
 
     private fun parseTrip1(obj: JSONObject, handler: ExceptionHandler<*>): Trip? {
@@ -795,7 +830,7 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
     private fun parseConnection1(arr: JSONArray, index: Int, obj: JSONObject, handler: ExceptionHandler<*>): List<TripConnection>? {
         val tripId = obj.optJSONObject("mode")?.optJSONObject("diva")?.optStringNull("tripCode")
 
-        val vehicle = obj.optJSONObject("mode")?.let { parseVehicle1(it, handler) }
+        val mot = obj.optJSONObject("mode")?.let { parseMOT1(it, handler) }
 
         var stops = obj.optJSONArray("stopSeq")?.let { parseArray(it, ::parseStop1, handler) }
         stops = stops ?: obj.optJSONArray("points")?.let { parseArray(it, ::parseStop2, handler) }
@@ -803,11 +838,11 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
             return handler.raise(InvalidResponseContentException("The keys \"stopSeq\" and/or \"points\" are both missing or empty"))
         }
 
-        val id = ConnectionIdentifierVMS.make(vehicle?.line, tripId, stops.firstOrNull())
+        val id = ConnectionIdentifierVMS.make((mot as? LineMOT)?.line, tripId, stops.firstOrNull())
 
         val path = obj.optStringNull("path")?.let { parsePath1(it, handler) }
 
-        val thisIsCertainlyWalk = vehicle?.type?.isSubtypeOf(VehicleTypes.WALK) == true
+        val thisIsCertainlyWalk = mot?.motType is Walk
 
         val turnInst = obj.optJSONArray("turnInst")?.let { parseArray(it, ::parseTurnInst1, handler) }
 
@@ -828,15 +863,15 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
         var connW: TripConnection? = null
 
         if (!thisIsCertainlyWalk) {
-            connV = TripConnectionImpl(id=id, vehicle=vehicle, path=path, stops=stops)
+            connV = TripConnectionImpl(id=id, modeOfTransport=mot, path=path, stops=stops)
         }
 
         if (thisIsCertainlyWalk) {
-            connW = TripWalkConnection(vehicle=vehicle, path=walkPath, stops=stops, instructions=turnInst)
+            connW = TripWalkConnection(modeOfTransport=mot, path=walkPath, stops=stops, instructions=turnInst)
         } else if (!turnInst.isNullOrEmpty()) {
-            connW = TripWalkConnection(vehicle=TripWalkConnection.DEFAULT_VEHICLE_INTERCHANGE, path=walkPath, stops=walkStops, instructions=turnInst)
+            connW = TripWalkConnection(modeOfTransport=TripWalkConnection.DEFAULT_VEHICLE_INTERCHANGE, path=walkPath, stops=walkStops, instructions=turnInst)
         } else if (!walkPathRaw.isNullOrEmpty()) {
-            connW = TripConnectionImpl(vehicle=TripWalkConnection.DEFAULT_VEHICLE_INTERCHANGE, path=walkPath, stops=walkStops)
+            connW = TripConnectionImpl(modeOfTransport=TripWalkConnection.DEFAULT_VEHICLE_INTERCHANGE, path=walkPath, stops=walkStops)
         }
 
         return listOfNotNull(connV, connW)
@@ -849,21 +884,21 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
         val vehicleRaw = params.optJSONObject("mode")
         val idRaw = vehicleRaw?.optJSONObject("diva")?.optStringNull("tripCode")
 
-        val vehicle = parseVehicle1(vehicleRaw, handler)
+        val mot = parseMOT1(vehicleRaw, handler)
 
         val stops = parseArray(params.optJSONArray("stopSeq") ?:
             return handler.raise(InvalidResponseContentException("Connection params has no key \"stopSeq\""))
         , ::parseStop1, handler)
 
-        val id = ConnectionIdentifierVMS.make(vehicle?.line, idRaw, stops.firstOrNull())
+        val id = ConnectionIdentifierVMS.make((mot as? LineMOT)?.line, idRaw, stops.firstOrNull())
 
         val path = obj.optJSONObject("coords")?.optStringNull("path")?.let { parsePath1(it, handler) }
 
-        return ConnectionImpl(id=id, stops=stops, vehicle=vehicle, path=path)
+        return ConnectionImpl(id=id, stops=stops, modeOfTransport=mot, path=path)
     }
 
     // parse the destination of a vehicle/line -> returns StationDirection if possible, normal Direction otherwise
-    private fun parseDestination1(obj: JSONObject, handler: ExceptionHandler<*>): Direction? {
+    private fun parseLineVariant1(obj: JSONObject, handler: ExceptionHandler<*>): LineVariant? {
         val saveCount = handler.save()
 
         val stationId = obj.optStringNull("destId")
@@ -872,14 +907,40 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
         var name = obj.optStringNull("destination") ?:
             return handler.raise(InvalidResponseContentException("Destination has no valid name"), restoreTo=saveCount)
 
-        if (stationId != null) {
+        val destination = if (stationId != null) {
             name = cleanStationName(name, handler)
-            handler.restoreToCount(saveCount)
-            return StationDirectionImpl(StationImpl(id=stationId.toStaId(), name=name))
+            StationDirectionImpl(StationImpl(id=stationId.toStaId(), name=name))
+        } else {
+            DirectionImpl(name)
         }
 
         handler.restoreToCount(saveCount)
-        return DirectionImpl(name)
+        return LineVariantImpl(direction=destination)
+    }
+
+    private fun parseLineVariant2(obj: JSONObject, handler: ExceptionHandler<*>): LineVariant? {
+        var lineNameS = obj.optStringNull("symbol")
+        if (lineNameS.isNullOrBlank()) { lineNameS = null }
+
+        var destinationS = obj.optStringNull("direction")
+        if (lineNameS != null && destinationS?.startsWith(lineNameS) == true) {
+            val destinationSplit = destinationS.split(" ", limit=2)
+            if (destinationSplit.size > 1) {
+                lineNameS = destinationSplit[0]
+                destinationS = destinationSplit[1]
+            }
+        }
+
+        val destinationId = obj.optStringNull("destID")
+        val destination = when {
+            destinationS == null -> null
+            destinationId != null -> StationDirectionImpl(StationImpl(id=destinationId.toStaId(), name=cleanStationName(destinationS, handler)))
+            else -> DirectionImpl(destinationS)
+        }
+
+        if (destination == null && lineNameS.isNullOrEmpty()) { return null }
+
+        return LineVariantImpl(name=lineNameS, direction=destination)
     }
 
     @Suppress("MemberVisibilityCanBePrivate")
@@ -948,16 +1009,26 @@ class VMS(private val limitArea: String) : CachedPOIAPI, CachedSearchPOIAPI, Loc
     }
 
     // map the transport modes to vehicle types
-    private fun parseVehicleType(product: String?, lineName: String?, handler: ExceptionHandler<*>): VehicleType? {
+    private fun parseVehicleType(product: String?, lineName: String?, handler: ExceptionHandler<*>): MOTType? {
         return when (product) {
-            "Bus" -> if (lineName?.startsWith("N") == true) VehicleTypes.BUS_NIGHT else VehicleTypes.BUS
-            "PlusBus" -> VehicleTypes.BUS_REGIONAL
-            "Schülerlinie" -> VehicleTypes.BUS_SCHOOL
-            "Ersatzverkehr" -> VehicleTypes.BUS_TRAIN_REPLACEMENT
-            "Tram" -> VehicleTypes.TRAM
-            "Chemnitz Bahn" -> VT_CHEMNITZ_BAHN
-            "Zug" -> VehicleTypes.TRAIN
-            "Fussweg" -> VehicleTypes.WALK
+            "Bus" -> if (lineName?.startsWith("N") == true) MOTTypes.BUS_NIGHT else MOTTypes.BUS
+            "PlusBus" -> MOTTypes.BUS_REGIONAL
+            "Schülerlinie" -> MOTTypes.BUS_SCHOOL
+            "Ersatzverkehr" -> MOTTypes.BUS_REPLACES_TRAIN
+            "Tram" -> MOTTypes.TRAM
+            "Chemnitz Bahn" -> CHEMNITZ_BAHN
+            "Zug" -> when {
+                lineName?.startsWith("RB") == true -> VehicleTypes.RB
+                lineName?.startsWith("RE") == true -> VehicleTypes.RE
+                lineName?.startsWith("IC") == true -> VehicleTypes.IC
+                else -> MOTTypes.TRAIN
+            }
+            "R-Bahn" -> when {
+                lineName?.startsWith("RB") == true -> VehicleTypes.RB
+                lineName?.startsWith("RE") == true -> VehicleTypes.RE
+                else -> MOTTypes.TRAIN
+            }
+            "Fussweg" -> MOTTypes.WALK
             else -> handler.raise(InvalidResponseContentException("Found unknown vehicle type \"$product\""))
         }
     }

@@ -11,6 +11,16 @@ import java.util.Locale
 // API should be implemented on all classes that implements and fills api endpoints
 // usage example: class BostonTransport : API, SearchStationAPI, TripAPI
 interface API
+interface FusedAPI : API {
+    fun mergeExceptions(response1: APIResponse, response2: APIResponse?): List<IThoughtOfThePossibilityException>? {
+        return mergeExceptions(response1.exceptions, response2?.exceptions)
+    }
+    fun mergeExceptions(exceptions1: List<IThoughtOfThePossibilityException>?, exceptions2: List<IThoughtOfThePossibilityException>?) : List<IThoughtOfThePossibilityException>? {
+        exceptions1 ?: return exceptions2
+        exceptions2 ?: return exceptions1
+        return exceptions1 + exceptions2
+    }
+}
 interface APIRequest
 interface APIResponse {
     val request: APIRequest
@@ -25,6 +35,8 @@ interface Identifier : Serializable {
     companion object {
         const val SAFE_CONCAT = ":::~:::" // it is safe to assume that no id will ever naturally contain this
         const val SAFE_EMPTY = "[[[NULL]]]"
+        fun SAFE_CONCAT(s: String) = ":::~{$s}:::"
+        fun SAFE_EMPTY(s: String) = "[[[NULL:{$s}]]]"
     }
     fun concat(vararg parts: Any?): String {
         return parts.joinToString(SAFE_CONCAT) {
@@ -57,7 +69,7 @@ interface MaybeIdentifiable {
     val id: Identifier?
 }
 
-interface Identifiable : MaybeIdentifiable {
+interface Identifiable : MaybeIdentifiable  {
     override val id: Identifier
 }
 

@@ -4,13 +4,14 @@ package com.maddin.transportapi.impl
 
 import com.maddin.transportapi.components.DirectionImpl
 import com.maddin.transportapi.components.LineImpl
+import com.maddin.transportapi.components.LineMOTImpl
+import com.maddin.transportapi.components.LineVariantImpl
 import com.maddin.transportapi.endpoints.RealtimeAPI
 import com.maddin.transportapi.components.RealtimeConnection
 import com.maddin.transportapi.components.RealtimeConnectionImpl
 import com.maddin.transportapi.endpoints.RealtimeRequest
 import com.maddin.transportapi.components.StationImpl
 import com.maddin.transportapi.components.StopImpl
-import com.maddin.transportapi.components.VehicleImpl
 import com.maddin.transportapi.components.toConId
 import com.maddin.transportapi.components.toLineId
 import com.maddin.transportapi.components.toStaId
@@ -123,8 +124,10 @@ class ExampleAPI(private var connectionsPerStation: Int) : SearchPOIAPI, Realtim
             val dIndex = (Math.random() * stationNames.size).toInt().coerceAtMost(stationNames.size-1)
             val vName = vehicleNames[vIndex]
             val dName = stationNames[dIndex]
-            val vehicle = VehicleImpl(line=LineImpl(id=vName.toLineId(), name=vName), direction=DirectionImpl(name=dName))
-            val connection = RealtimeConnectionImpl(id=cId.toConId(), StopImpl(poi=request.poi, departurePlanned=departurePlanned), vehicle=vehicle)
+            val line = LineImpl(id=vName.toLineId(), name=vName)
+            val variant = LineVariantImpl(direction=DirectionImpl(name=dName))
+            val mot = LineMOTImpl(line=line, variant=variant)
+            val connection = RealtimeConnectionImpl(id=cId.toConId(), StopImpl(poi=request.poi, departurePlanned=departurePlanned), modeOfTransport=mot)
             connections.add(connection)
         }
 

@@ -68,7 +68,7 @@ class APIHelper { companion object {
 
             TripConnectionImpl(
                 id=conn.id?:connId, stops=stops, from=stopFrom, to=stopTo,
-                vehicle=conn.vehicle?:connO.vehicle,
+                modeOfTransport=conn.modeOfTransport?:connO.modeOfTransport,
                 path=conn.path?:connO.path,
                 flags=conn.flags
             )
